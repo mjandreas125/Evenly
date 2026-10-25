@@ -1,0 +1,13 @@
+# builds
+build/
+out/
+dist/
+.vs/
+*.user
+
+# audio used for tuning and tests (not ours to share)
+*.wav
+
+# local work notes
+WORKLOG.md
+__pycache__/
