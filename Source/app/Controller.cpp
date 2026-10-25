@@ -112,6 +112,10 @@ Controller::~Controller()
     watcher.reset();
     keepAlive.stop();
     rememberTone();
+    // Nobody adapts the tone while the app is closed: leave the effect without a correction that
+    // belonged to the last recording (the mode and loudness settings stay).
+    tone.reset();
+    applyParams();
     link.flushToDisk (true);
     save();
 }
@@ -173,6 +177,20 @@ void Controller::save()
     o->setProperty ("modes", modes);
     dataDir().getChildFile ("settings.json").replaceWithText (juce::JSON::toString (juce::var (o)));
     dataDir().getChildFile ("learned.json").replaceWithText (juce::JSON::toString (learned));
+}
+
+// A short journal for troubleshooting: %APPDATA%\Rovno\log.txt (the last few hundred lines).
+void Controller::log (const juce::String& line)
+{
+    const auto f = dataDir().getChildFile ("log.txt");
+    if (f.getSize() > 256 * 1024)
+    {
+        juce::StringArray lines;
+        lines.addLines (f.loadFileAsString());
+        lines.removeRange (0, lines.size() / 2);
+        f.replaceWithText (lines.joinIntoString ("\n") + "\n");
+    }
+    f.appendText (juce::Time::getCurrentTime().formatted ("%Y-%m-%d %H:%M:%S  ") + line + "\n", false, false, "\n");
 }
 
 void Controller::setEnabled (bool on) { isEnabled = on; applyParams(); saveSoon(); sendChangeMessage(); }
@@ -396,6 +414,13 @@ void Controller::tick()
             }
     }
 
+    if (d.kind != before || sourceKey != loggedKey)
+    {
+        loggedKey = sourceKey;
+        const char* whyName[] = { "none", "manual", "manual-before", "learned", "app", "title", "sound", "default" };
+        log ("mode " + juce::String ((int) d.kind) + " (" + whyName[(int) d.why] + (d.detail.empty() ? juce::String() : " " + juce::String (d.detail.c_str()))
+             + ") source \"" + sourceKey + "\" speechP " + juce::String (speechP, 2));
+    }
     const ModeSound s = sound (state.kind);
     const bool musicLike = state.kind == Kind::Music || state.kind == Kind::Game;
     tone.setContent (musicLike ? Content::Music : Content::Speech);

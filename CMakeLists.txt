@@ -63,6 +63,10 @@ target_compile_definitions(RovnoApo PRIVATE WIN32_LEAN_AND_MEAN)
 add_executable(apo_host_test Source/tests/ApoHostTest.cpp)
 target_link_libraries(apo_host_test PRIVATE ole32 oleaut32 propsys)
 
+# --- a stand-in for the effect (tests the app without sound hardware) --------------------------
+add_executable(rovno_fakefx Source/tests/FakeEffectMain.cpp)
+target_link_libraries(rovno_fakefx PRIVATE advapi32)
+
 # --- install / remove / talk to the effect ----------------------------------------------------
 add_executable(rovno_ctl Source/tools/CtlMain.cpp)
 target_link_libraries(rovno_ctl PRIVATE advapi32 ole32 oleaut32)

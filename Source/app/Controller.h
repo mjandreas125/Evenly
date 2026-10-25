@@ -77,6 +77,7 @@ private:
     void saveSoon() { saveAt = juce::Time::getMillisecondCounter() + 800; }
     juce::var& learnedFor (const juce::String& key);
     void rememberTone();
+    void log (const juce::String& line);
 
     // settings
     bool isEnabled = true, levelerOn = true, fxLoud = false, toneOn = true, keepOn = true;
@@ -97,7 +98,7 @@ private:
     FeatureWindow features;
     ToneCorrector tone;
     NowState state;
-    juce::String sourceKey;
+    juce::String sourceKey, loggedKey;
     Guess hintNow;
     Kind lastVoteKind = Kind::Unknown;
     int ticks = 0, stableTicks = 0;

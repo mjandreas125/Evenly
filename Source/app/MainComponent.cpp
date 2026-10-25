@@ -416,6 +416,7 @@ void MainComponent::syncFromController()
     for (Switch* sw : { power.get(), levelSwitch.get(), toneSwitch.get() }) sw->snap();
     const auto tw = c.tweaks (shownKind);
     eq->set (tw.eq, s.eq, st.tone, kc);
+    graph->set (st.history, targetLufsFor (c.volume()) + s.targetOffsetDb, c.leveler() && c.enabled());
 
     deviceBox.clear (juce::dontSendNotification);
     deviceGuids.clear();
@@ -496,18 +497,20 @@ juce::String MainComponent::toneText() const
     if (! c.toneAuto()) return L ("выключено", "off");
     if (c.sound (st.kind).toneStrength <= 0) return L ("в этом режиме не нужна", "not used in this mode");
     if (st.toneConfidence < 1.0f) return L ("слушаю запись…", "listening…");
-    float low = 0, mid = 0, high = 0;
-    for (int i = 0; i < 3; ++i) low += st.tone[(size_t) i];
-    for (int i = 3; i < 7; ++i) mid += st.tone[(size_t) i];
-    for (int i = 7; i < 10; ++i) high += st.tone[(size_t) i];
-    low /= 3; mid /= 4; high /= 3;
+    // Low = 60-210 Hz, mids = 400 Hz-1.4 kHz, clarity = 2.5-8.6 kHz (16 kHz hardly matters to the ear).
+    const float low = (st.tone[0] + st.tone[1] + st.tone[2]) / 3;
+    const float mid = (st.tone[3] + st.tone[4] + st.tone[5]) / 3;
+    const float high = (st.tone[6] + st.tone[7] + st.tone[8]) / 3;
     juce::StringArray parts;
     if (low < -0.7f) parts.add (L ("убран гул", "less boom"));
     if (low > 0.7f) parts.add (L ("добавлено низов", "more body"));
     if (high > 0.7f) parts.add (L ("добавлена чёткость", "more clarity"));
     if (high < -0.7f) parts.add (L ("смягчена резкость", "less harshness"));
     if (std::abs (mid) > 0.7f && parts.isEmpty()) parts.add (mid > 0 ? L ("ярче середина", "fuller mids") : L ("мягче середина", "softer mids"));
-    return parts.isEmpty() ? L ("запись звучит нормально, правка не нужна", "the recording sounds fine as it is") : parts.joinIntoString (" · ");
+    if (! parts.isEmpty()) return parts.joinIntoString (" · ");
+    float most = 0;
+    for (float t : st.tone) most = std::max (most, std::abs (t));
+    return most > 0.7f ? L ("небольшая правка тона", "a small tone touch-up") : L ("запись звучит нормально, правка не нужна", "the recording sounds fine as it is");
 }
 
 void MainComponent::paint (juce::Graphics& g)
@@ -556,15 +559,19 @@ void MainComponent::paint (juce::Graphics& g)
     nr.removeFromLeft (14);
     g.setColour (col::text);
     g.setFont (font (15.5f, 600));
-    const bool nothing = st.title.isEmpty() && st.app.isEmpty();
-    const juce::String title = ! nothing ? (st.title.isNotEmpty() ? st.title : L ("Звук без названия", "Untitled sound"))
-                                         : L ("Сейчас ничего не играет", "Nothing is playing");
+    const bool unnamed = st.title.isEmpty() && st.app.isEmpty();
+    const bool sounding = st.running && st.inLufs > -50;
+    const bool nothing = unnamed && ! sounding;
+    const juce::String title = ! unnamed ? (st.title.isNotEmpty() ? st.title : L ("Звук без названия", "Untitled sound"))
+                             : sounding ? L ("Звук без названия", "Untitled sound")
+                                        : L ("Сейчас ничего не играет", "Nothing is playing");
     g.drawFittedText (title, nr.removeFromTop (40), juce::Justification::topLeft, 2, 0.95f);
     g.setColour (col::dim);
     g.setFont (font (13.0f));
     juce::String sub = st.artist;
     if (st.app.isNotEmpty()) sub = sub.isNotEmpty() ? sub + "  ·  " + st.app : st.app;
     if (nothing) sub = L ("Включите видео или музыку: режим подберётся сам", "Play a video or music: the mode picks itself");
+    else if (unnamed) sub = L ("программа не сообщила название, режим выбирается по звуку", "the app gave no title; the mode follows the sound");
     g.drawText (sub, nr.removeFromTop (18), juce::Justification::centredLeft, true);
     nr.removeFromTop (8);
     auto chip = nr.removeFromTop (24);

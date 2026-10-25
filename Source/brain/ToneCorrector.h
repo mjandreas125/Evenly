@@ -83,6 +83,9 @@ private:
             double d = dev[b];
             const bool empty = shape[b] < -40;                       // nothing there to bring up, only noise
             if (d > 0 && (empty || (content == Content::Speech && kBandHz[b] < 150))) d = 0;
+            // Speech has nothing useful above 12 kHz (many good recordings are cut there by codecs):
+            // leave that range alone rather than chase hiss or codec differences.
+            if (content == Content::Speech && kBandHz[b] >= 12000) d = 0;
             want[b] = std::clamp (d * strength, -8.0, 6.0);
             w[b] = (kBandHz[b] < 60 || kBandHz[b] > 14000) ? 0.2 : 1.0;
         }

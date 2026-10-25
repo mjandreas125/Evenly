@@ -86,7 +86,8 @@ public:
         if (snap >= 0)
         {
             // Let the controller see the effect and what is playing, then draw and quit.
-            juce::Timer::callAfterDelay (2600, [this, path = args[snap + 1].unquoted(), eq = args.contains ("--eq"), menu = args.contains ("--menu")]
+            const int wait = args.contains ("--wait") ? args[args.indexOf ("--wait") + 1].getIntValue() * 1000 : 2600;
+            juce::Timer::callAfterDelay (wait, [this, path = args[snap + 1].unquoted(), eq = args.contains ("--eq"), menu = args.contains ("--menu")]
             {
                 juce::Image img;
                 if (menu)
