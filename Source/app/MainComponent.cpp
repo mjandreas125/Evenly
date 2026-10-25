@@ -7,6 +7,8 @@ bool russian()
 {
     static const bool r = []
     {
+        wchar_t forced[8] {};
+        if (GetEnvironmentVariableW (L"ROVNO_LANG", forced, 8) > 0) return _wcsicmp (forced, L"ru") == 0;
         auto slav = [] (LANGID id) { const WORD p = PRIMARYLANGID (id); return p == LANG_RUSSIAN || p == LANG_UKRAINIAN || p == LANG_BELARUSIAN || p == LANG_KAZAK; };
         return slav (GetUserDefaultUILanguage()) || slav (LANGIDFROMLCID (GetUserDefaultLCID()));
     }();
