@@ -132,6 +132,7 @@ void Controller::load()
         legacyVolume = o->hasProperty ("volume");
         vol = legacyVolume ? (float) (double) o->getProperty ("volume") : vol;
         deviceVolumes = o->getProperty ("deviceVolume");
+        deviceModes = o->getProperty ("deviceModes");
         levelerOn = o->hasProperty ("leveler") ? (bool) o->getProperty ("leveler") : true;
         fxLoud = (bool) o->getProperty ("fxsoundLoudness");
         toneOn = o->hasProperty ("toneAuto") ? (bool) o->getProperty ("toneAuto") : true;
@@ -154,6 +155,7 @@ void Controller::load()
     learned = juce::JSON::parse (dataDir().getChildFile ("learned.json"));
     if (! learned.isObject()) learned = new juce::DynamicObject();
     if (! deviceVolumes.isObject()) deviceVolumes = new juce::DynamicObject();
+    if (! deviceModes.isObject()) deviceModes = new juce::DynamicObject();
 }
 
 void Controller::save()
@@ -169,6 +171,15 @@ void Controller::save()
     o->setProperty ("keepAwake", keepOn);
     o->setProperty ("manual", (int) manual);
     o->setProperty ("device", device);
+    if (device.isNotEmpty()) deviceModes.getDynamicObject()->setProperty (device, modesToVar());
+    o->setProperty ("deviceModes", deviceModes);
+    o->setProperty ("modes", modesToVar());   // the current output's, as older versions read it
+    dataDir().getChildFile ("settings.json").replaceWithText (juce::JSON::toString (juce::var (o)));
+    dataDir().getChildFile ("learned.json").replaceWithText (juce::JSON::toString (learned));
+}
+
+juce::var Controller::modesToVar() const
+{
     juce::Array<juce::var> modes;
     for (const auto& t : tweakFor)
     {
@@ -180,9 +191,24 @@ void Controller::save()
         m->setProperty ("eq", arrayOf (t.eq, 10));
         modes.add (m);
     }
-    o->setProperty ("modes", modes);
-    dataDir().getChildFile ("settings.json").replaceWithText (juce::JSON::toString (juce::var (o)));
-    dataDir().getChildFile ("learned.json").replaceWithText (juce::JSON::toString (learned));
+    return modes;
+}
+
+void Controller::modesFromVar (const juce::var& v)
+{
+    tweakFor = {};
+    if (auto* modes = v.getArray())
+        for (int k = 0; k < 4 && k < modes->size(); ++k)
+            if (auto* m = (*modes)[k].getDynamicObject())
+            {
+                auto& t = tweakFor[(size_t) k];
+                t.fidelity = (float) (double) m->getProperty ("fidelity");
+                t.ambience = (float) (double) m->getProperty ("ambience");
+                t.surround = (float) (double) m->getProperty ("surround");
+                t.bass = (float) (double) m->getProperty ("bass");
+                if (auto* eq = m->getProperty ("eq").getArray())
+                    for (int i = 0; i < 10 && i < eq->size(); ++i) t.eq[i] = (float) (double) (*eq)[i];
+            }
 }
 
 // A short journal for troubleshooting: %APPDATA%\Rovno\log.txt (the last few hundred lines).
@@ -296,7 +322,13 @@ void Controller::refreshDevices()
 
 void Controller::selectDevice (const juce::String& guid)
 {
+    // Every output keeps its own sliders and equalizer (headphones are not tuned like speakers): put the old
+    // output's away, bring this one's back. The settings of an older version belong to the first output.
+    if (guid != device && device.isNotEmpty()) deviceModes.getDynamicObject()->setProperty (device, modesToVar());
+    const bool switching = guid != device;
     device = guid;
+    if (switching && device.isNotEmpty() && ! firstSelect)
+        modesFromVar (deviceModes.getDynamicObject()->hasProperty (device) ? deviceModes.getDynamicObject()->getProperty (device) : juce::var());
     link.setEndpoint (guid.toWideCharPointer());
     refreshDevices();
     // Each output has its own loudness: headphones and speakers are not set alike. A new output starts from the

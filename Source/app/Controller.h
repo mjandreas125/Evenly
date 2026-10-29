@@ -93,6 +93,9 @@ private:
     std::array<ModeTweaks, 4> tweakFor {};
     juce::String device;
     juce::var learned;                        // per source: kind votes, hand-picked kind, tone
+    juce::var deviceModes;                    // output guid -> the sliders and equalizer of its four modes
+    juce::var modesToVar() const;
+    void modesFromVar (const juce::var&);
     juce::var deviceVolumes;                  // output guid -> the volume slider's position for that output
     bool legacyVolume = false, firstSelect = true;
     uint32_t saveAt = 0;
