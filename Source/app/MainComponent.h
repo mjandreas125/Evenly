@@ -26,7 +26,7 @@ public:
 
     // popup menus: rounded floating panel with its own soft shadow, pill highlight, tick mark
     int getMenuWindowFlags() override { return juce::ComponentPeer::windowIsSemiTransparent; }
-    int getPopupMenuBorderSize() override { return 8; }
+    int getPopupMenuBorderSize() override { return 14; }   // the panel is drawn 8 px in, so the rows have 6 px of air above and below
     void drawPopupMenuBackground (juce::Graphics&, int w, int h) override;
     void drawPopupMenuItem (juce::Graphics&, const juce::Rectangle<int>& area, bool isSeparator, bool isActive, bool isHighlighted,
                             bool isTicked, bool hasSubMenu, const juce::String& text, const juce::String& shortcut,
@@ -112,6 +112,7 @@ public:
     void setEqOpen (bool open, bool animate = false);   // animated from the UI, at once for snapshots
     int preferredHeight() const;
     static constexpr int kWidth = 1120;
+    static inline bool demoData = false;     // for pictures without sound: a made-up spectrum and loudness history (--demo)
     static inline bool hideBanner = false;   // for the README picture (--snapshot --clean)
 
     // Called by the window when the interface scale changes (the menu entry lives here).

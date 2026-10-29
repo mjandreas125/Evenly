@@ -129,6 +129,7 @@ public:
             // Let the controller see the effect and what is playing, then draw and quit.
             const int wait = args.contains ("--wait") ? args[args.indexOf ("--wait") + 1].getIntValue() * 1000 : 2600;
             rv::ui::MainComponent::hideBanner = args.contains ("--clean");
+            rv::ui::MainComponent::demoData = args.contains ("--demo");
             const float snapScale = args.contains ("--scale") ? args[args.indexOf ("--scale") + 1].getFloatValue() : 1.0f;
             juce::Timer::callAfterDelay (wait, [this, snapScale, path = args[snap + 1].unquoted(), eq = args.contains ("--eq"), menu = args.contains ("--menu")]
             {

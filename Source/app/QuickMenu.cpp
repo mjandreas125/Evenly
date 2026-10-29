@@ -233,7 +233,7 @@ void QuickMenu::paint (juce::Graphics& g)
             juce::Path base;
             base.startNewSubPath (t.getX() + 16, t.getBottom() - 1.0f);
             base.lineTo (t.getX() + 16 + (t.getWidth() - 32) * fill, t.getBottom() - 1.0f);
-            glowStroke (g, base, kc.brighter (0.2f), 2.0f, 1.3f * lit);
+            glowStroke (g, base, kc, 2.0f, 0.8f * lit);
         }
         g.setColour ((current ? kc.withAlpha (0.55f) : juce::Colours::white.withAlpha (0.09f)).withMultipliedAlpha (te * (1.0f - lit * 0.6f)));
         g.drawRoundedRectangle (t.reduced (0.5f), 14.0f, 1.0f);

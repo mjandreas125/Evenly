@@ -273,7 +273,7 @@ public:
             juce::Path base;
             base.startNewSubPath (r.getX() + 16.0f, r.getBottom() - 1.0f);
             base.lineTo (r.getRight() - 16.0f, r.getBottom() - 1.0f);
-            glowStroke (g, base, pillColour.brighter (0.2f), 2.0f, 1.3f);
+            glowStroke (g, base, pillColour, 2.0f, 0.8f);
         }
         for (size_t i = 0; i < items.size(); ++i)
         {
@@ -429,18 +429,32 @@ public:
         g.setColour (juce::Colours::white.withAlpha (0.10f));
         g.fillRect (r.getX(), r.getBottom() - 0.5f, r.getWidth(), 1.0f);
 
-        // the spectrum as one smooth curve (Catmull-Rom through the third-octave points)
+        // The spectrum as one smooth curve (Catmull-Rom through the third-octave points). The curve starts and ends
+        // on the baseline at the very edges, so both ends slope down into nothing instead of being cut off.
+        const float baseY = yOf (lo);
         auto curve = [&] (const std::array<float, (size_t) kBands>& v, juce::Path& p)
         {
-            auto pt = [&] (int i) { i = juce::jlimit (0, kBands - 1, i); return juce::Point<float> (xOf (i), yOf (v[(size_t) i])); };
-            p.startNewSubPath (r.getX(), pt (0).y);
-            p.lineTo (pt (0));
-            for (int i = 0; i < kBands - 1; ++i)
+            std::vector<juce::Point<float>> pts;
+            pts.emplace_back (r.getX(), baseY);
+            for (int i = 0; i < kBands; ++i) pts.emplace_back (xOf (i), yOf (v[(size_t) i]));
+            pts.emplace_back (r.getRight(), baseY);
+            const int n = (int) pts.size();
+            auto at = [&] (int i) { return pts[(size_t) juce::jlimit (0, n - 1, i)]; };
+            p.startNewSubPath (pts.front());
+            for (int i = 0; i < n - 1; ++i)
             {
-                const auto p0 = pt (i - 1), p1 = pt (i), p2 = pt (i + 1), p3 = pt (i + 2);
+                const auto p0 = at (i - 1), p1 = at (i), p2 = at (i + 1), p3 = at (i + 2);
                 p.cubicTo (p1 + (p2 - p0) / 6.0f, p2 - (p3 - p1) / 6.0f, p2);
             }
-            p.lineTo (r.getRight(), pt (kBands - 1).y);
+        };
+        // a stroke whose colour fades to nothing at both ends
+        auto strokeFaded = [&] (const juce::Path& path, float width, juce::Colour c, float alphaMul)
+        {
+            juce::ColourGradient fade (c.withAlpha (0.0f), r.getX(), 0, c.withAlpha (0.0f), r.getRight(), 0, false);
+            fade.addColour (0.06, c.withAlpha (alphaMul));
+            fade.addColour (0.94, c.withAlpha (alphaMul));
+            g.setGradientFill (fade);
+            g.strokePath (path, juce::PathStrokeType (width, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         };
         juce::Path line;
         curve (shown, line);
@@ -448,14 +462,19 @@ public:
         fill.lineTo (r.getRight(), r.getBottom());
         fill.lineTo (r.getX(), r.getBottom());
         fill.closeSubPath();
-        g.setGradientFill (juce::ColourGradient (base.withAlpha (live ? 0.42f : 0.12f), 0, r.getY(), base.withAlpha (0.0f), 0, r.getBottom(), false));
+        g.setGradientFill (juce::ColourGradient (base.withAlpha (live ? 0.38f : 0.10f), 0, r.getY(), base.withAlpha (0.0f), 0, r.getBottom(), false));
         g.fillPath (fill);
         // the recent top of every band, as a faint thin line
         juce::Path tops;
         curve (shownPeaks, tops);
-        g.setColour (base.withAlpha (live ? 0.28f : 0.10f));
-        g.strokePath (tops, juce::PathStrokeType (1.0f));
-        glowStroke (g, line, base.brighter (0.25f).withAlpha (live ? 1.0f : 0.4f), 2.0f, live ? 1.0f : 0.0f);
+        strokeFaded (tops, 1.0f, base, live ? 0.24f : 0.08f);
+        const juce::Colour lineColour = base.brighter (0.15f);
+        if (live)
+        {
+            strokeFaded (line, 7.0f, lineColour, 0.035f);
+            strokeFaded (line, 4.0f, lineColour, 0.07f);
+        }
+        strokeFaded (line, 2.0f, lineColour, live ? 0.95f : 0.35f);
 
         g.setColour (col::faint);
         g.setFont (font (12.5f, 500));
@@ -767,6 +786,25 @@ void styleSlider (juce::Slider& s, juce::Colour c)
 }
 } // namespace
 
+namespace
+{
+// A speech-like spectrum and a loudness history for the README pictures (never used in normal running).
+void demoFill (std::array<float, (size_t) kBands>& b, std::array<float, (size_t) kBands>& p, std::deque<std::pair<float, float>>& hist)
+{
+    for (int i = 0; i < kBands; ++i)
+    {
+        const float x = (float) i;
+        const float body = -52.0f + 34.0f * std::exp (-std::pow ((x - 9.0f) / 6.5f, 2.0f)) + 7.0f * std::sin (x * 0.9f) + 4.0f * std::sin (x * 2.1f + 1.0f);
+        b[(size_t) i] = body;
+        p[(size_t) i] = body + 5.0f + 2.0f * std::sin (x * 1.3f);
+    }
+    hist.clear();
+    for (int k = 0; k < 150; ++k)
+        hist.emplace_back (-27.0f + 4.0f * std::sin ((float) k * 0.21f) + 2.0f * std::sin ((float) k * 0.7f),
+                           -11.5f + 1.6f * std::sin ((float) k * 0.21f + 0.8f) + 0.8f * std::sin ((float) k * 0.6f));
+}
+} // namespace
+
 MainComponent::MainComponent (Controller& controller) : c (controller)
 {
     setLookAndFeel (&lnf);
@@ -870,8 +908,13 @@ void MainComponent::syncFromController()
     toneSwitch->onColour = kcCur;
     const auto tw = c.tweaks (shownKind);
     eq->set (tw.eq, s.eq, st.tone, kc);
-    spectrum->set (st.bands, st.bandPeaks, kcCur, c.enabled() && st.running);
-    graph->set (st.history, targetLufsFor (c.volume()) + s.targetOffsetDb, c.leveler() && c.enabled(), kcCur);
+    {
+        auto bands = st.bands, peaks = st.bandPeaks;
+        auto hist = st.history;
+        if (demoData) demoFill (bands, peaks, hist);
+        spectrum->set (bands, peaks, kcCur, demoData || (c.enabled() && st.running));
+        graph->set (hist, targetLufsFor (c.volume()) + s.targetOffsetDb, c.leveler() && c.enabled(), kcCur);
+    }
 
     deviceGuids.clear();
     juce::StringArray labels;
@@ -976,8 +1019,8 @@ void MainComponent::timerCallback()
         toneSwitch->onColour = kcCur;
         needPaint = true;
     }
-    spectrum->set (st.bands, st.bandPeaks, kcCur, c.enabled() && st.running);
-    if (++graphTick % 6 == 0)
+    if (! demoData) spectrum->set (st.bands, st.bandPeaks, kcCur, c.enabled() && st.running);
+    if (! demoData && ++graphTick % 6 == 0)
         graph->set (st.history, targetLufsFor (c.volume()) + c.sound (st.kind).targetOffsetDb, c.leveler() && c.enabled(), kcCur);
     if (st.kind != shownKind) syncFromController();
     static juce::String lastNow;

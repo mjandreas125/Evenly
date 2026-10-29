@@ -209,8 +209,8 @@ inline juce::Colour& neoTint() { static juce::Colour c = col::accent; return c; 
 // Neon glow: the same path stroked wide and faint, then narrower, then the line itself.
 inline void glowStroke (juce::Graphics& g, const juce::Path& p, juce::Colour c, float width, float glow = 1.0f)
 {
-    g.setColour (c.withAlpha (0.07f * glow)); g.strokePath (p, juce::PathStrokeType (width + 9.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-    g.setColour (c.withAlpha (0.12f * glow)); g.strokePath (p, juce::PathStrokeType (width + 5.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    g.setColour (c.withAlpha (0.035f * glow)); g.strokePath (p, juce::PathStrokeType (width + 9.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    g.setColour (c.withAlpha (0.06f * glow)); g.strokePath (p, juce::PathStrokeType (width + 5.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     g.setColour (c); g.strokePath (p, juce::PathStrokeType (width, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 }
 
@@ -221,14 +221,14 @@ inline void softGlow (juce::Graphics& g, const juce::Path& p, juce::Colour c, fl
     const float widths[4] = { 2.0f, 1.4f, 0.9f, 0.5f }, alphas[4] = { 0.05f, 0.07f, 0.10f, 0.14f };
     for (int i = 0; i < 4; ++i)
     {
-        g.setColour (c.withAlpha (juce::jlimit (0.0f, 1.0f, alpha * alphas[i] / 0.3f)));
+        g.setColour (c.withAlpha (juce::jlimit (0.0f, 1.0f, alpha * alphas[i] / 0.5f)));
         g.strokePath (p, juce::PathStrokeType (spread * widths[i], juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
 }
 
 inline void glowDot (juce::Graphics& g, juce::Point<float> c, float radius, juce::Colour colour, float strength = 1.0f)
 {
-    g.setGradientFill (juce::ColourGradient (colour.withAlpha (0.45f * strength), c.x, c.y, colour.withAlpha (0.0f), c.x + radius * 2.6f, c.y, true));
+    g.setGradientFill (juce::ColourGradient (colour.withAlpha (0.26f * strength), c.x, c.y, colour.withAlpha (0.0f), c.x + radius * 2.6f, c.y, true));
     g.fillEllipse (c.x - radius * 2.6f, c.y - radius * 2.6f, radius * 5.2f, radius * 5.2f);
 }
 
