@@ -96,6 +96,8 @@ class Spectrum;
 class LevelGraph;
 class EqEditor;
 class DeviceBox;
+class EqPanel;
+class Scrim;
 
 class MainComponent : public juce::Component, private juce::ChangeListener, private juce::Timer
 {
@@ -104,9 +106,6 @@ public:
     ~MainComponent() override;
     void paint (juce::Graphics&) override;
     void resized() override;
-    void mouseUp (const juce::MouseEvent&) override;
-    void mouseMove (const juce::MouseEvent&) override;
-    void mouseExit (const juce::MouseEvent&) override;
     void setEqOpen (bool open, bool animate = false);   // animated from the UI, at once for snapshots
     int preferredHeight() const;
     static constexpr int kWidth = 1120;
@@ -123,6 +122,7 @@ private:
     void showMoreMenu();
     void refreshTexts();
     void eqTick();
+    void layoutEq();
     int eqHeight() const;
     struct Ticker : juce::Timer { std::function<void()> tick; void timerCallback() override { if (tick) tick(); } } ticker;
     void bannerAction();
@@ -138,6 +138,8 @@ private:
     std::unique_ptr<Spectrum> spectrum;
     std::unique_ptr<LevelGraph> graph;
     std::unique_ptr<EqEditor> eq;
+    std::unique_ptr<EqPanel> eqPanel;
+    std::unique_ptr<Scrim> scrim;
     std::unique_ptr<DeviceBox> deviceBox;
     NeoSlider volume, fid, bass, surr, amb;
     NeoButton resetSound, bannerButton, moreButton;

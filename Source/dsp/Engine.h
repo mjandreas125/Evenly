@@ -28,6 +28,7 @@ public:
         limiter.prepare (fs, nch);
         inMeter.prepare (fs); outMeter.prepare (fs);
         analyzer.prepare (fs);
+        scratch.assign ((size_t) (std::max (16, (int) (fs * 0.01)) + 1) * (size_t) nch, 0.0f);
         for (auto& g : eqNow) g = 0;
         eqFlat();
         firstParams = true;
@@ -71,7 +72,15 @@ public:
             for (int pos = 0; pos < frames; pos += block)
             {
                 const int n = std::min (block, frames - pos);
-                float* p = x + (size_t) pos * (size_t) nch;
+                float* const raw = x + (size_t) pos * (size_t) nch;
+                // Below -80 dBFS (the keep-awake pulses of the output, the tail of a fade) nothing may be
+                // amplified: the block is processed on a copy, so that all the state keeps running as if it
+                // were silence, and the sound goes out as it came in.
+                float peak = 0;
+                for (int i = 0; i < n * nch; ++i) peak = std::max (peak, std::abs (raw[i]));
+                const bool belowFloor = peak < 1.0e-4f && scratch.size() >= (size_t) n * (size_t) nch;
+                float* p = raw;
+                if (belowFloor) { std::memcpy (scratch.data(), raw, (size_t) n * (size_t) nch * sizeof (float)); p = scratch.data(); }
                 glideEq (n / fs);
                 if (nch >= 2)
                 {
@@ -175,6 +184,7 @@ private:
     Limiter limiter;
     LoudnessMeter inMeter, outMeter;
     Analyzer analyzer;
+    std::vector<float> scratch;
     float eqTarget[10] {}, eqNow[10] {}, eqSet[10] {};
     float ceiling = 0.891f, outGain = 1.0f;
 };

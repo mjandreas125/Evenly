@@ -677,6 +677,64 @@ private:
     int drag = -1;
 };
 
+// ---- the equalizer panel: a bottom sheet that rises over the other cards (the window never grows) ----
+class EqPanel : public juce::Component
+{
+public:
+    std::function<void()> onToggle;
+    float anim = 0.0f;            // 0 closed .. 1 open, set by the main component
+    bool open = false;
+    void paint (juce::Graphics& g) override
+    {
+        const auto r = getLocalBounds().toFloat();
+        g.setColour (col::bg.brighter (0.035f));
+        g.fillRoundedRectangle (r, 14.0f);
+        drawCard (g, r, col::card.brighter (0.05f * hoverA));
+        const auto head = getLocalBounds().withHeight (kEqClosed);
+        g.setColour (col::text);
+        g.setFont (font (19.0f, 600));
+        g.drawText (L ("Эквалайзер", "Equalizer"), head.reduced (24, 0), juce::Justification::centredLeft);
+        const float cx = (float) head.getRight() - 30.0f, cy = (float) head.getCentreY();
+        juce::Path ch;
+        ch.startNewSubPath (-6, 3); ch.lineTo (0, -3); ch.lineTo (6, 3);   // points up = it will open; down when open
+        const float turn = (1.0f - easeOut (anim)) * juce::MathConstants<float>::pi;
+        g.setColour (hoverA > 0.5f ? col::text : col::dim);
+        g.strokePath (ch, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded),
+                      juce::AffineTransform::rotation (turn).translated (cx, cy));
+    }
+    void mouseMove (const juce::MouseEvent& e) override { setHover (e.y < kEqClosed); }
+    void mouseExit (const juce::MouseEvent&) override { setHover (false); }
+    void mouseUp (const juce::MouseEvent& e) override { if (e.y < kEqClosed && onToggle) onToggle(); }
+    void tickHover()
+    {
+        const float t = hover ? 1.0f : 0.0f;
+        hoverA += (t - hoverA) * 0.3f;
+        if (std::abs (t - hoverA) < 0.01f) hoverA = t;
+        repaint();
+    }
+    bool hovering() const { return hover; }
+    float hoverAmount() const { return hoverA; }
+private:
+    void setHover (bool h)
+    {
+        if (h == hover) return;
+        hover = h;
+        setMouseCursor (h ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
+    }
+    bool hover = false;
+    float hoverA = 0;
+};
+
+// Dims everything behind the open panel; a click on it closes the panel.
+class Scrim : public juce::Component
+{
+public:
+    std::function<void()> onClick;
+    float amount = 0.0f;
+    void paint (juce::Graphics& g) override { g.fillAll (juce::Colours::black.withAlpha (0.55f * amount)); }
+    void mouseDown (const juce::MouseEvent&) override { if (onClick) onClick(); }
+};
+
 // ---- main component --------------------------------------------------------------------------
 namespace
 {
@@ -707,7 +765,13 @@ MainComponent::MainComponent (Controller& controller) : c (controller)
                                                                             spectrum.get(), graph.get(), deviceBox.get(),
                                                                             &volume, &fid, &bass, &surr, &amb, &resetSound, &bannerButton, &moreButton })
         addAndMakeVisible (comp);
-    addChildComponent (eq.get());
+    scrim = std::make_unique<Scrim>();
+    eqPanel = std::make_unique<EqPanel>();
+    addChildComponent (scrim.get());
+    addAndMakeVisible (eqPanel.get());           // last: above all the cards
+    eqPanel->addChildComponent (eq.get());
+    scrim->onClick = [this] { setEqOpen (false, true); };
+    eqPanel->onToggle = [this] { setEqOpen (! eqOpen, true); };
     resetSound.setMouseCursor (juce::MouseCursor::PointingHandCursor);
     bannerButton.setMouseCursor (juce::MouseCursor::PointingHandCursor);
     moreButton.setMouseCursor (juce::MouseCursor::PointingHandCursor);
@@ -815,11 +879,8 @@ void MainComponent::syncFromController()
 
 int MainComponent::preferredHeight() const
 {
-    // While the equalizer is opening or closing the window already has the open height: the panel
-    // unfolds inside it, and the window shrinks only after the panel has folded away.
-    const bool tall = eqOpen || eqAnim > 0.001f;
-    return kTop + kHead + kGap + (banner() != Banner::None ? kBannerH + kGap : 0) + kRow1 + kGap + kRow2 + kGap
-           + (tall ? kEqOpen : kEqClosed) + kBottom;
+    // The window has one height: the equalizer opens as a sheet over the cards instead of growing it.
+    return kTop + kHead + kGap + (banner() != Banner::None ? kBannerH + kGap : 0) + kRow1 + kGap + kRow2 + kGap + kEqClosed + kBottom;
 }
 
 int MainComponent::eqHeight() const
@@ -832,26 +893,42 @@ void MainComponent::setEqOpen (bool open, bool animate)
 {
     eqOpen = open;
     if (! animate) eqAnim = open ? 1.0f : 0.0f;
-    setSize (kWidth, preferredHeight());
-    resized();
-    repaint();
+    layoutEq();
     if (animate) ticker.startTimerHz (60);
 }
 
-// One step of the equalizer panel opening or closing (60 Hz, only while it moves).
+// Where the sheet is for the current point of the animation.
+void MainComponent::layoutEq()
+{
+    eqPanel->anim = eqAnim;
+    eqPanel->open = eqOpen;
+    eqPanel->setBounds (eqR.withTop (eqR.getBottom() - eqHeight()));
+    const bool dim = eqAnim > 0.005f;
+    scrim->setVisible (dim);
+    scrim->setBounds (getLocalBounds());
+    scrim->amount = easeOut (eqAnim);
+    const bool plotShown = eqAnim > 0.02f;
+    eq->setVisible (plotShown);
+    if (plotShown)
+    {
+        eq->setBounds (eqPanel->getLocalBounds().withTrimmedTop (kEqClosed - 4).reduced (16, 10));
+        eq->setAlpha (juce::jlimit (0.0f, 1.0f, (eqAnim - 0.25f) / 0.75f));
+    }
+    eqPanel->toFront (false);
+    eqPanel->repaint();
+    scrim->repaint();
+}
+
+// One step of the sheet rising or sinking (60 Hz, only while it moves).
 void MainComponent::eqTick()
 {
     const float target = eqOpen ? 1.0f : 0.0f;
     const float speed = 0.075f;   // about 0.22 s end to end
     eqAnim = eqAnim < target ? std::min (target, eqAnim + speed) : std::max (target, eqAnim - speed);
-    const float th = eqHover ? 1.0f : 0.0f;
-    eqHoverAmt += (th - eqHoverAmt) * 0.3f;
-    const bool settled = eqAnim == target && std::abs (th - eqHoverAmt) < 0.01f;
-    if (settled) { eqHoverAmt = th; ticker.stopTimer(); }
-    const int h = preferredHeight();
-    if (getHeight() != h) setSize (kWidth, h);   // grows with the first step, shrinks after the last
-    resized();
-    repaint (0, eqR.getY() - 4, getWidth(), getHeight() - eqR.getY() + 4);
+    eqPanel->tickHover();
+    const bool hoverSettled = std::abs ((eqPanel->hovering() ? 1.0f : 0.0f) - eqPanel->hoverAmount()) < 0.01f;
+    if (eqAnim == target && hoverSettled) ticker.stopTimer();
+    layoutEq();
 }
 
 void MainComponent::soundChanged()
@@ -888,7 +965,7 @@ void MainComponent::timerCallback()
     static juce::String lastNow;
     const juce::String nowKey = st.title + st.artist + whyText() + toneText() + (st.running ? "1" : "0");
     if (nowKey != lastNow) { lastNow = nowKey; needPaint = true; }
-    if (eqOpen) eq->set (c.tweaks (shownKind).eq, c.sound (shownKind).eq, st.tone, kcCur);
+    if (eqOpen || eqAnim > 0.0f) eq->set (c.tweaks (shownKind).eq, c.sound (shownKind).eq, st.tone, kcCur);
     if (needPaint) repaint();
 }
 
@@ -1099,21 +1176,6 @@ void MainComponent::paint (juce::Graphics& g)
     if (toneText().isNotEmpty())
         g.drawFittedText (toneText(), juce::Rectangle<int> (soundR.getX() + 24, toneSwitch->getBottom() + 4, soundR.getWidth() - 48, 44), juce::Justification::topLeft, 2);
 
-    // EQ
-    drawCard (g, eqR.toFloat(), col::card.brighter (0.05f * eqHoverAmt));
-    g.setColour (col::text);
-    g.setFont (font (19.0f, 600));
-    g.drawText (L ("Эквалайзер", "Equalizer"), eqHeadR.reduced (24, 0), juce::Justification::centredLeft);
-    {
-        const float cx = (float) eqHeadR.getRight() - 30.0f, cy = (float) eqHeadR.getCentreY();
-        juce::Path ch;
-        ch.startNewSubPath (-6, 3); ch.lineTo (0, -3); ch.lineTo (6, 3);   // points up = open
-        const float turn = (1.0f - easeOut (eqAnim)) * juce::MathConstants<float>::pi;
-        g.setColour (eqHover ? col::text : col::dim);
-        g.strokePath (ch, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded),
-                      juce::AffineTransform::rotation (turn).translated (cx, cy));
-    }
-
 }
 
 void MainComponent::resized()
@@ -1164,36 +1226,8 @@ void MainComponent::resized()
         toneSwitch->setBounds (soundR.getRight() - 24 - 56, y + 20, 56, 34);
     }
     r.removeFromTop (kGap);
-    eqR = r.removeFromTop (eqHeight());
-    eqHeadR = eqR.withHeight (kEqClosed);
-    const bool plotShown = eqAnim > 0.02f;
-    eq->setVisible (plotShown);
-    if (plotShown)
-    {
-        eq->setBounds (eqR.withTrimmedTop (kEqClosed - 4).reduced (16, 10));
-        eq->setAlpha (juce::jlimit (0.0f, 1.0f, (eqAnim - 0.25f) / 0.75f));
-    }
-}
-
-void MainComponent::mouseUp (const juce::MouseEvent& e)
-{
-    if (eqHeadR.contains (e.getPosition())) setEqOpen (! eqOpen, true);
-}
-
-void MainComponent::mouseMove (const juce::MouseEvent& e)
-{
-    const bool h = eqHeadR.contains (e.getPosition());
-    if (h != eqHover)
-    {
-        eqHover = h;
-        setMouseCursor (h ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
-        ticker.startTimerHz (60);
-    }
-}
-
-void MainComponent::mouseExit (const juce::MouseEvent&)
-{
-    if (eqHover) { eqHover = false; setMouseCursor (juce::MouseCursor::NormalCursor); ticker.startTimerHz (60); }
+    eqR = r.removeFromTop (kEqClosed);
+    layoutEq();
 }
 
 void MainComponent::bannerAction()
@@ -1229,7 +1263,7 @@ void MainComponent::showMoreMenu()
                                                        + " 0x" + juce::String::toHexString ((int) ks.keepError) + ")"; break;
             default: break;
         }
-    m.addItem (500, L ("Ctrl + Alt + ` — быстро сменить режим из любого окна", "Ctrl + Alt + ` switches the mode from any window"), false);
+    m.addItem (500, L ("Alt + ` — быстро сменить режим из любого окна", "Alt + ` switches the mode from any window"), false);
     m.addSeparator();
     m.addItem (1, keepText, true, c.keepAwake());
     m.addItem (2, L ("Громкость как в FxSound (без выравнивания)", "FxSound-style loudness (no leveling)"), true, c.fxSoundLoudness());

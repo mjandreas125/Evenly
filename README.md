@@ -12,7 +12,7 @@ It is a replacement for FxSound: the same effects, bit for bit, plus the things 
 
 **Simple.** One power switch, five modes (Auto, Music, Speech, Movies, Games), four sliders. You can leave everything alone: Auto does the rest.
 
-**Convenient.** Switch modes from any window with Ctrl + Alt + `. The window shows what is playing, which mode is on and why, a live spectrum, and the loudness of the last 90 seconds. It scales itself to your monitor and speaks 14 languages.
+**Convenient.** Switch modes from any window with Alt + `. The window shows what is playing, which mode is on and why, a live spectrum, and the loudness of the last 90 seconds. It scales itself to your monitor and speaks 14 languages.
 
 **Honest.** You can see what the program is doing to your sound. If the automatic choice is wrong, one click sets the right mode and it remembers that next time.
 
@@ -23,7 +23,7 @@ It is a replacement for FxSound: the same effects, bit for bit, plus the things 
 - **Learns.** Pick a mode for a channel or an artist once, and next time it switches on its own.
 - **Gently fixes the tone of poor recordings.** Dull, boomy or thin recordings are pulled toward how good ones sound. It cannot work miracles, since it does not know how the recording sounded before it was damaged, so the correction is mild (details below). Good recordings are barely touched.
 - **FxSound's effects:** Clarity, Bass, Width, Ambience and a 10-band equalizer. This is a port of FxSound's open-source code and gives the same sound bit for bit (checked on 7 presets and 3 recordings).
-- **Quick menu.** Ctrl + Alt + ` (the key left of 1) in any program opens the mode picker: 1 Auto, 2 Music, 3 Speech, 4 Movies, 5 Games.
+- **Quick menu.** Alt + ` (the key left of 1, on any layout) opens a small panel over everything with the next mode already lit. Do nothing and it is applied after about a second; tap the key again to move on (hold Alt and release it to apply at once); or just click a mode. Esc closes it without changing anything. It never takes the keyboard focus from the program you are typing in.
 - **Keeps HDMI and DisplayPort audio awake.** Monitors and TVs switch their audio off after a few seconds of silence and swallow the start of the next sound. Evenly keeps the output awake.
 - Runs inside the Windows audio engine: no virtual cables, no change of the default device, 1.5 ms latency. Windows volume keeps working as usual.
 - 14 interface languages: English, Russian, Estonian, Ukrainian, German, French, Spanish, Italian, Portuguese, Polish, Dutch, Swedish, Finnish, Turkish. It follows your Windows language; change it in the More menu.

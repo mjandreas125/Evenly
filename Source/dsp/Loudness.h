@@ -127,6 +127,7 @@ public:
         pSlow = pFast = 0; haveEstimate = false; silence = 0; quietRun = 0; activeTime = 0;
         gainDb = 0; appliedGain = 1;
     }
+    void idle (double seconds) { silence += seconds; }   // time passed without being measured
     double gainDb_() const { return gainDb; }
     double slowLufs() const { return haveEstimate ? powerToLufs (pSlow) : -70; }
 

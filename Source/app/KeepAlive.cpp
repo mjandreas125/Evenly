@@ -1,8 +1,11 @@
 #include "KeepAlive.h"
+#include <algorithm>
 #include <windows.h>
 #include <mmreg.h>
 #include <mmdeviceapi.h>
 #include <audioclient.h>
+#include <functiondiscoverykeys_devpkey.h>
+#include <propidl.h>
 
 namespace rv
 {
@@ -14,6 +17,21 @@ bool isTemporary (HRESULT hr)
 {
     return hr == AUDCLNT_E_DEVICE_INVALIDATED || hr == AUDCLNT_E_RESOURCES_INVALIDATED
            || hr == AUDCLNT_E_SERVICE_NOT_RUNNING || hr == (HRESULT) 0x80070490 /* not found */;
+}
+
+// The sample size the hardware really gets (the shared-mode mix is always float).
+HRESULT readDeviceBits (IMMDevice* dev, bool& is16Bit)
+{
+    IPropertyStore* props = nullptr;
+    HRESULT hr = dev->OpenPropertyStore (STGM_READ, &props);
+    if (FAILED (hr)) return S_OK;   // not fatal: assume 24-bit
+    PROPVARIANT v;
+    PropVariantInit (&v);
+    if (SUCCEEDED (props->GetValue (PKEY_AudioEngine_DeviceFormat, &v)) && v.vt == VT_BLOB && v.blob.cbSize >= sizeof (WAVEFORMATEX))
+        is16Bit = reinterpret_cast<const WAVEFORMATEX*> (v.blob.pBlobData)->wBitsPerSample <= 16;
+    PropVariantClear (&v);
+    props->Release();
+    return S_OK;
 }
 } // namespace
 
@@ -51,6 +69,7 @@ void KeepAlive::run (std::wstring id)
         IAudioRenderClient* render = nullptr;
         WAVEFORMATEX* fmt = nullptr;
         UINT32 bufferFrames = 0;
+        bool deviceIs16Bit = false;
         HRESULT hr = S_OK;
         const char* step = "";
 
@@ -62,6 +81,7 @@ void KeepAlive::run (std::wstring id)
             && call ("GetDevice", en->GetDevice (id.c_str(), &dev))
             && call ("Activate", dev->Activate (__uuidof (IAudioClient), CLSCTX_ALL, nullptr, (void**) &client))
             && call ("GetMixFormat", client->GetMixFormat (&fmt))
+            && call ("DeviceFormat", readDeviceBits (dev, deviceIs16Bit))
             && call ("Initialize", client->Initialize (AUDCLNT_SHAREMODE_SHARED, 0, 2000000 /* 200 ms */, 0, fmt, nullptr))
             && call ("GetService", client->GetService (__uuidof (IAudioRenderClient), (void**) &render))
             && call ("Start", client->Start())
@@ -73,7 +93,15 @@ void KeepAlive::run (std::wstring id)
             lastStep = "";
             state = Status::Holding;
             backoffMs = 1000;
-            // Keep the buffer topped up with silence until the output goes away or we are stopped.
+            // Keep the buffer topped up until the output goes away or we are stopped. Pure zeros are not
+            // enough: many monitors, TVs and HDMI/DisplayPort codecs mute at digital silence and need a
+            // moment to wake up when sound comes back (the first moments of the next sound are lost).
+            // So, like Sound Keeper's "fluctuate" mode, the stream is zeros with the smallest possible
+            // non-zero sample 50 times a second, alternating in sign: not audible, but never silent.
+            const bool floatMix = fmt && (fmt->wFormatTag == WAVE_FORMAT_IEEE_FLOAT || (fmt->wFormatTag == WAVE_FORMAT_EXTENSIBLE && fmt->wBitsPerSample == 32));
+            const UINT32 channels = fmt ? fmt->nChannels : 2;
+            const UINT32 onceInFrames = std::max<UINT32> (2u, fmt ? fmt->nSamplesPerSec / 50 : 960u);
+            UINT64 frameCounter = 0;
             while (sleepOrQuit (50))
             {
                 UINT32 padding = 0;
@@ -82,7 +110,24 @@ void KeepAlive::run (std::wstring id)
                 if (freeFrames == 0) continue;
                 BYTE* data = nullptr;
                 if (FAILED (hr = render->GetBuffer (freeFrames, &data))) { step = "GetBuffer"; break; }
-                if (FAILED (hr = render->ReleaseBuffer (freeFrames, AUDCLNT_BUFFERFLAGS_SILENT))) { step = "ReleaseBuffer"; break; }
+                if (floatMix)
+                {
+                    // 0x38000100 = 1/32767 (one step of a 16-bit device), 0x34000001 = 1/8388607 (24-bit)
+                    auto* out = reinterpret_cast<UINT32*> (data);
+                    for (UINT32 i = 0; i < freeFrames; ++i, ++frameCounter)
+                    {
+                        UINT32 sample = 0;
+                        if (frameCounter % onceInFrames == 0)
+                        {
+                            sample = deviceIs16Bit ? 0x38000100u : 0x34000001u;
+                            if ((frameCounter / onceInFrames) & 1) sample |= 0x80000000u;
+                        }
+                        for (UINT32 c = 0; c < channels; ++c) out[(size_t) i * channels + c] = sample;
+                    }
+                    hr = render->ReleaseBuffer (freeFrames, 0);
+                }
+                else hr = render->ReleaseBuffer (freeFrames, AUDCLNT_BUFFERFLAGS_SILENT);
+                if (FAILED (hr)) { step = "ReleaseBuffer"; break; }
             }
         }
 
