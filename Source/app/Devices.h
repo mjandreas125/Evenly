@@ -18,6 +18,7 @@ struct OutputDevice
     bool isFxSound = false;      // FxSound's (DFX) virtual device
     bool isVirtual = false;      // a software device (voice changers, mixers, cables)
     bool digital = false;        // HDMI / DisplayPort / S/PDIF: may fall asleep when idle
+    bool headphones = false;     // headphones or a headset (also Bluetooth ones): gentler loudness
     bool plugged = true;         // false while e.g. the monitor is off; it comes back by itself
 };
 

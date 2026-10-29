@@ -131,7 +131,7 @@ std::vector<OutputDevice> list()
                 PropVariantClear (&v);
                 if (SUCCEEDED (props->GetValue (PKEY_DeviceInterface_FriendlyName, &v)) && v.vt == VT_LPWSTR) d.adapter = v.pwszVal;
                 PropVariantClear (&v);
-                if (SUCCEEDED (props->GetValue (kFormFactor, &v)) && v.vt == VT_UI4) d.digital = v.ulVal == 8 || v.ulVal == 9;
+                if (SUCCEEDED (props->GetValue (kFormFactor, &v)) && v.vt == VT_UI4) { d.digital = v.ulVal == 8 || v.ulVal == 9; d.headphones = v.ulVal == 3 || v.ulVal == 5; }
                 PropVariantClear (&v);
                 props->Release();
             }

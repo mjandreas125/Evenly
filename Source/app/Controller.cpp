@@ -129,7 +129,9 @@ void Controller::load()
     if (auto* o = v.getDynamicObject())
     {
         isEnabled = o->getProperty ("enabled").isVoid() ? true : (bool) o->getProperty ("enabled");
-        vol = o->hasProperty ("volume") ? (float) (double) o->getProperty ("volume") : vol;
+        legacyVolume = o->hasProperty ("volume");
+        vol = legacyVolume ? (float) (double) o->getProperty ("volume") : vol;
+        deviceVolumes = o->getProperty ("deviceVolume");
         levelerOn = o->hasProperty ("leveler") ? (bool) o->getProperty ("leveler") : true;
         fxLoud = (bool) o->getProperty ("fxsoundLoudness");
         toneOn = o->hasProperty ("toneAuto") ? (bool) o->getProperty ("toneAuto") : true;
@@ -151,6 +153,7 @@ void Controller::load()
     }
     learned = juce::JSON::parse (dataDir().getChildFile ("learned.json"));
     if (! learned.isObject()) learned = new juce::DynamicObject();
+    if (! deviceVolumes.isObject()) deviceVolumes = new juce::DynamicObject();
 }
 
 void Controller::save()
@@ -159,6 +162,7 @@ void Controller::save()
     auto* o = new juce::DynamicObject();
     o->setProperty ("enabled", isEnabled);
     o->setProperty ("volume", vol);
+    o->setProperty ("deviceVolume", deviceVolumes);
     o->setProperty ("leveler", levelerOn);
     o->setProperty ("fxsoundLoudness", fxLoud);
     o->setProperty ("toneAuto", toneOn);
@@ -196,7 +200,13 @@ void Controller::log (const juce::String& line)
 }
 
 void Controller::setEnabled (bool on) { isEnabled = on; applyParams(); saveSoon(); sendChangeMessage(); }
-void Controller::setVolume (float v) { vol = juce::jlimit (0.0f, 1.0f, v); applyParams(); saveSoon(); }
+void Controller::setVolume (float v)
+{
+    vol = juce::jlimit (0.0f, 1.0f, v);
+    if (device.isNotEmpty()) deviceVolumes.getDynamicObject()->setProperty (device, vol);   // every output remembers its own
+    applyParams();
+    saveSoon();
+}
 void Controller::setLeveler (bool on) { levelerOn = on; applyParams(); saveSoon(); sendChangeMessage(); }
 void Controller::setFxSoundLoudness (bool on) { fxLoud = on; applyParams(); saveSoon(); sendChangeMessage(); }
 void Controller::setToneAuto (bool on) { toneOn = on; applyParams(); saveSoon(); sendChangeMessage(); }
@@ -280,7 +290,7 @@ void Controller::refreshDevices()
         {
             state.installed = d.rovnoInstalled;
             state.deviceName = d.name.c_str();
-            deviceKind = deviceKindFor (d.name);
+            deviceKind = d.headphones ? DeviceKind::Headphones : deviceKindFor (d.name);
         }
 }
 
@@ -289,6 +299,16 @@ void Controller::selectDevice (const juce::String& guid)
     device = guid;
     link.setEndpoint (guid.toWideCharPointer());
     refreshDevices();
+    // Each output has its own loudness: headphones and speakers are not set alike. A new output starts from the
+    // default for its kind (the saved volume of an older version counts for the first output).
+    if (device.isNotEmpty())
+    {
+        auto* volumes = deviceVolumes.getDynamicObject();
+        if (volumes->hasProperty (device)) vol = (float) (double) volumes->getProperty (device);
+        else if (! (firstSelect && legacyVolume)) vol = defaultVolumeFor (deviceKind);
+        volumes->setProperty (device, vol);
+    }
+    firstSelect = false;
     keepAlive.stop();
     if (keepOn && ! device.isEmpty())
         for (const auto& d : deviceList)
@@ -483,10 +503,10 @@ void Controller::applyParams()
     const bool toneHere = toneOn && s.toneStrength > 0;
     for (int i = 0; i < 10; ++i) p.toneDb[i] = toneHere ? tone.correction()[i] : 0.0f;
     p.loudness = (uint32_t) (! levelerOn ? LoudnessMode::Off : (fxLoud ? LoudnessMode::FxSoundBoost : LoudnessMode::Leveler));
-    // On the MX34VQ, speech and music get FxSound's Dynamic Boost after the leveler, like the user's tuned FxSound
+    // On every output but headphones, speech and music get FxSound's Dynamic Boost after the leveler, like the tuned FxSound
     // presets: a plain peak limiter cannot make speech as loud (measured: 3 LUFS quieter on the same recordings).
     // The leveler then only has to hand the boost the same input level every time.
-    const bool boosted = ! fxLoud && deviceKind == DeviceKind::MX34VQ && (state.kind == Kind::Speech || state.kind == Kind::Music);
+    const bool boosted = ! fxLoud && deviceKind != DeviceKind::Headphones && (state.kind == Kind::Speech || state.kind == Kind::Music);
     p.boost = (fxLoud || boosted) ? 118 : 0;
     p.targetLufs = targetLufsFor (vol) + s.targetOffsetDb - (boosted ? 6.0f : 0.0f);
     p.maxBoostDb = s.maxBoostDb;

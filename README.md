@@ -12,7 +12,7 @@ It is a replacement for FxSound: the same effects, bit for bit, plus the things 
 
 **Simple.** One power switch, five modes (Auto, Music, Speech, Movies, Games), four sliders. You can leave everything alone: Auto does the rest.
 
-**Convenient.** Switch modes from any window with Alt + `. The window shows what is playing, which mode is on and why, a live spectrum, and the loudness of the last 90 seconds. It scales itself to your monitor and speaks 14 languages.
+**Convenient.** Switch modes from any window with Alt + `. The window shows what is playing, which mode is on and why, a live spectrum, and the loudness of the last 90 seconds. It fits itself to the monitor it is on (and again when you drag it to another one) and speaks 14 languages.
 
 **Honest.** You can see what the program is doing to your sound. If the automatic choice is wrong, one click sets the right mode and it remembers that next time.
 
@@ -26,6 +26,7 @@ It is a replacement for FxSound: the same effects, bit for bit, plus the things 
 - **Quick menu.** Hold Alt and press ` (the key left of 1, on any layout): a small panel opens over everything with the next mode lit. Press ` again to move on, or hover and click a mode with the mouse; let go of Alt and the lit mode is applied and the panel closes. A quick tap switches to the next mode at once. Esc closes it without changing anything. The panel never takes the keyboard focus from the program you are typing in.
 - **Keeps HDMI and DisplayPort audio awake.** Monitors and TVs switch their audio off after a few seconds of silence and swallow the start of the next sound. Evenly keeps the output awake.
 - Runs inside the Windows audio engine: no virtual cables, no change of the default device, 1.5 ms latency. Windows volume keeps working as usual.
+- **Adapts to your setup.** The window is sized to the monitor it is on, from small laptop screens to ultrawides, with Windows display scaling taken into account. Headphones and headsets are recognised and get a gentler loudness; speakers and monitors get the full FxSound-style loudness. Every output remembers its own volume. Which mode is right for which source, and the tone fixes, are learned from your own choices.
 - 14 interface languages: English, Russian, Estonian, Ukrainian, German, French, Spanish, Italian, Portuguese, Polish, Dutch, Swedish, Finnish, Turkish. It follows your Windows language; change it in the More menu.
 
 ## Install
@@ -59,6 +60,7 @@ A slow equalizer cannot fix a narrow harshness. The tone correction can be turne
 
 - Windows 10 and 11, 64-bit only.
 - One output is processed at a time (the one chosen in the program).
+- Only the ASUS MX34VQ has hand-tuned sound settings; every other output gets a general profile (neutral equalizer, FxSound-style loudness for speech and music, gentler for headphones). If yours needs different taste, the sliders and the equalizer are there.
 - Programs that take the sound card in exclusive mode (some audio players using WASAPI Exclusive or ASIO) bypass all system effects, Evenly included.
 - Movies and games are recognised from the app and the title; from the sound alone it tells only speech from music.
 - This is a beta, tested on one computer so far (Windows 10, AMD audio over HDMI/DisplayPort). If something is off, please open an issue.

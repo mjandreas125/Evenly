@@ -10,18 +10,45 @@
 
 namespace rv::ui
 {
-// Interface scale: 0 = automatic (the window is laid out for a 1080p screen and grows with the
-// monitor), otherwise a percentage the user picked in the More menu. Kept in a small file.
+// Interface scale. Automatic (0): the window is sized to fit the monitor it is on (its work area, so the
+// taskbar is respected), from 65 % on a small laptop screen up to 130 % on a big one, and it is fitted again
+// when the window is moved to another monitor. Otherwise a percentage the user picked in the More menu.
+// The percentage is of the design size in real pixels (Windows' own display scaling is taken into account).
 juce::File scaleFile() { return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Rovno").getChildFile ("ui-scale.txt"); }
 int savedScale() { const auto f = scaleFile(); return f.existsAsFile() ? f.loadFileAsString().trim().getIntValue() : 0; }
 void saveScale (int percent) { const auto f = scaleFile(); f.getParentDirectory().createDirectory(); f.replaceWithText (juce::String (percent)); }
-void applyScale (int percent)
+
+struct MonitorSpace { float workW = 1920, workH = 1040, dpi = 1.0f; };
+MonitorSpace monitorSpace (HWND hwnd)
 {
-    float s = 1.0f;
-    if (percent >= 100) s = (float) percent / 100.0f;
-    else if (const auto* d = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())
-        s = juce::jlimit (1.0f, 1.4f, std::round ((float) d->userBounds.getHeight() / 1080.0f * 20.0f) / 20.0f);
-    juce::Desktop::getInstance().setGlobalScaleFactor (s);
+    MonitorSpace s;
+    HMONITOR mon = hwnd ? MonitorFromWindow (hwnd, MONITOR_DEFAULTTONEAREST) : MonitorFromPoint (POINT { 0, 0 }, MONITOR_DEFAULTTOPRIMARY);
+    MONITORINFO mi {};
+    mi.cbSize = sizeof (mi);
+    if (mon != nullptr && GetMonitorInfoW (mon, &mi))
+    {
+        s.workW = (float) (mi.rcWork.right - mi.rcWork.left);
+        s.workH = (float) (mi.rcWork.bottom - mi.rcWork.top);
+    }
+    const UINT dpi = hwnd ? GetDpiForWindow (hwnd) : GetDpiForSystem();
+    if (dpi > 0) s.dpi = (float) dpi / 96.0f;
+    return s;
+}
+
+// The scale (in real pixels per design pixel) at which the tallest layout (with the banner) and the title bar fit.
+float fitScale (const MonitorSpace& s)
+{
+    constexpr float designW = 1120.0f, designH = 846.0f;
+    const float chrome = 48.0f * s.dpi, side = 16.0f * s.dpi;
+    const float t = std::min ({ (s.workH * 0.96f - chrome) / designH, (s.workW * 0.96f - side) / designW, 1.30f });
+    return juce::jlimit (0.65f, 1.30f, std::round (t * 20.0f) / 20.0f);
+}
+
+void applyScale (int percent, HWND hwnd = nullptr)
+{
+    const auto monitor = monitorSpace (hwnd);
+    const float total = percent >= 50 ? (float) percent / 100.0f : fitScale (monitor);
+    juce::Desktop::getInstance().setGlobalScaleFactor (total / monitor.dpi);   // JUCE multiplies it by the display's own scaling
 }
 
 // JUCE popup menus appear at once; this fades every new menu window in (submenus and the tray menu too).
@@ -43,7 +70,7 @@ private:
     }
 };
 
-class MainWindow : public juce::DocumentWindow
+class MainWindow : public juce::DocumentWindow, private juce::Timer
 {
 public:
     explicit MainWindow (Controller& c) : juce::DocumentWindow ("Rovno", col::bg, juce::DocumentWindow::closeButton | juce::DocumentWindow::minimiseButton)
@@ -54,7 +81,8 @@ public:
         content->onScale = [this] (int percent)
         {
             saveScale (percent);
-            applyScale (percent);
+            applyScale (percent, hwnd());
+            refit();
             centreWithSize (getWidth(), getHeight());
         };
         setContentOwned (content, true);
@@ -63,6 +91,42 @@ public:
         setIcon (juce::ImageCache::getFromMemory (BinaryData::icon256_png, BinaryData::icon256_pngSize));
     }
     void closeButtonPressed() override { setVisible (false); }
+    // Moved to another monitor: fit the window to that one (once the move has stopped).
+    void moved() override { juce::DocumentWindow::moved(); if (savedScale() == 0) startTimer (450); }
+    // A new scale: JUCE keeps the window's size in real pixels and changes its logical size, so the content has to be
+    // given its design size again to make the window shrink or grow.
+    void refit()
+    {
+        if (auto* content = dynamic_cast<MainComponent*> (getContentComponent()))
+            setContentComponentSize (MainComponent::kWidth, content->preferredHeight());
+    }
+    // Never leave the window half off the screen after it has changed size (real pixels, the monitor's work area).
+    void keepInsideWorkArea()
+    {
+        HWND h = hwnd();
+        if (h == nullptr) return;
+        RECT rc {};
+        MONITORINFO mi {};
+        mi.cbSize = sizeof (mi);
+        if (! GetWindowRect (h, &rc) || ! GetMonitorInfoW (MonitorFromWindow (h, MONITOR_DEFAULTTONEAREST), &mi)) return;
+        const int w = rc.right - rc.left, hgt = rc.bottom - rc.top;
+        const int x = juce::jlimit ((int) mi.rcWork.left, std::max ((int) mi.rcWork.left, (int) mi.rcWork.right - w), (int) rc.left);
+        const int y = juce::jlimit ((int) mi.rcWork.top, std::max ((int) mi.rcWork.top, (int) mi.rcWork.bottom - hgt), (int) rc.top);
+        if (x != rc.left || y != rc.top) SetWindowPos (h, nullptr, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+    HWND hwnd() { return getPeer() ? (HWND) getPeer()->getNativeHandle() : nullptr; }
+    void timerCallback() override
+    {
+        stopTimer();
+        if (savedScale() != 0 || ! isVisible()) return;
+        const float before = juce::Desktop::getInstance().getGlobalScaleFactor();
+        applyScale (0, hwnd());
+        if (std::abs (juce::Desktop::getInstance().getGlobalScaleFactor() - before) > 0.004f)
+        {
+            refit();
+            juce::Timer::callAfterDelay (120, [safe = juce::Component::SafePointer<MainWindow> (this)] { if (safe) safe->keepInsideWorkArea(); });
+        }
+    }
     void visibilityChanged() override
     {
         // Dark title bar to match the window (Windows 10 2004+ / 11).

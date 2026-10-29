@@ -1350,7 +1350,7 @@ void MainComponent::showMoreMenu()
     juce::PopupMenu scale;
     scale.setLookAndFeel (&lnf);
     scale.addItem (20, L ("Авто (по размеру монитора)", "Automatic (by monitor size)"));
-    for (int p : { 100, 125, 150, 175, 200 }) scale.addItem (p, juce::String (p) + " %");
+    for (int p : { 70, 85, 100, 125, 150, 175, 200 }) scale.addItem (p, juce::String (p) + " %");
     m.addSubMenu (L ("Размер окна", "Window size"), scale);
     juce::PopupMenu langs;
     langs.setLookAndFeel (&lnf);
@@ -1367,7 +1367,7 @@ void MainComponent::showMoreMenu()
         else if (r == 3) c.forgetLearned();
         else if (r == 4) { juce::String err; c.installOnDevice (false, err); }
         else if (r == 20 && onScale) onScale (0);
-        else if (r >= 100 && r <= 200 && onScale) onScale (r);
+        else if (r >= 50 && r <= 200 && onScale) onScale (r);
         else if (r == 299) { useAutomaticLanguage(); refreshTexts(); }
         else if (r >= 300 && r < 300 + kLangCount) { chooseLanguage ((Lang) (r - 300)); refreshTexts(); }
         syncFromController();
