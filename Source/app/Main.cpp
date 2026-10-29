@@ -24,6 +24,25 @@ void applyScale (int percent)
     juce::Desktop::getInstance().setGlobalScaleFactor (s);
 }
 
+// JUCE popup menus appear at once; this fades every new menu window in (submenus and the tray menu too).
+class MenuFader : private juce::Timer
+{
+public:
+    MenuFader() { startTimer (15); }
+private:
+    void timerCallback() override
+    {
+        auto& desktop = juce::Desktop::getInstance();
+        for (int i = 0; i < desktop.getNumComponents(); ++i)
+            if (auto* c = desktop.getComponent (i))
+                if (c->getName() == "menu" && ! c->getProperties().contains ("evenlyFaded"))
+                {
+                    c->getProperties().set ("evenlyFaded", true);
+                    desktop.getAnimator().fadeIn (c, 120);
+                }
+    }
+};
+
 class MainWindow : public juce::DocumentWindow
 {
 public:
@@ -167,6 +186,7 @@ private:
     }
 
     rv::ui::RovnoLookAndFeel lookAndFeel;
+    rv::ui::MenuFader menuFader;
     std::unique_ptr<rv::Controller> controller;
     std::unique_ptr<rv::ui::MainWindow> window;
     std::unique_ptr<rv::ui::QuickMenu> quickMenu;

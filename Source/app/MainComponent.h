@@ -33,6 +33,63 @@ public:
     void getIdealPopupMenuItemSize (const juce::String& text, bool isSeparator, int standardHeight, int& idealWidth, int& idealHeight) override;
 };
 
+// A button that eases into hover and press instead of jumping.
+class NeoButton : public juce::TextButton, private juce::Timer
+{
+public:
+    NeoButton() { setMouseCursor (juce::MouseCursor::PointingHandCursor); }
+    void paintButton (juce::Graphics& g, bool, bool) override
+    {
+        const bool primary = getProperties().getWithDefault ("primary", false);
+        const juce::Colour c = primary ? col::accent : neoTint();
+        auto r = getLocalBounds().toFloat().reduced (1.5f + pressA * 1.2f);
+        juce::Path p;
+        p.addRoundedRectangle (r, 10.0f);
+        if (hoverA > 0.02f) juce::DropShadow (c.withAlpha ((primary ? 0.45f : 0.30f) * hoverA), 10, { 0, 0 }).drawForPath (g, p);
+        g.setGradientFill (juce::ColourGradient (c.withAlpha ((primary ? 0.30f : 0.06f) + hoverA * 0.10f + pressA * 0.12f), 0, r.getY(),
+                                                 c.withAlpha ((primary ? 0.12f : 0.02f) + hoverA * 0.03f), 0, r.getBottom(), false));
+        g.fillPath (p);
+        g.setColour ((primary ? c.withAlpha (0.95f) : juce::Colours::white.withAlpha (0.18f)).interpolatedWith (c.withAlpha (0.9f), primary ? 0.0f : hoverA));
+        g.strokePath (p, juce::PathStrokeType (1.2f));
+        g.setColour (primary ? col::accent.brighter (0.5f) : col::text);
+        g.setFont (font (15.0f, 600));
+        g.drawText (getButtonText(), getLocalBounds(), juce::Justification::centred, true);
+    }
+    void buttonStateChanged() override { startTimerHz (60); }
+private:
+    void timerCallback() override
+    {
+        const float th = isOver() ? 1.0f : 0.0f, tp = isDown() ? 1.0f : 0.0f;
+        hoverA += (th - hoverA) * 0.3f;
+        pressA += (tp - pressA) * 0.45f;
+        if (std::abs (th - hoverA) < 0.01f && std::abs (tp - pressA) < 0.01f) { hoverA = th; pressA = tp; stopTimer(); }
+        repaint();
+    }
+    float hoverA = 0, pressA = 0;
+};
+
+// A slider whose thumb and glow ease with the mouse.
+class NeoSlider : public juce::Slider, private juce::Timer
+{
+public:
+    float hoverAmount() const { return hoverA; }
+    float pressAmount() const { return pressA; }
+    void mouseEnter (const juce::MouseEvent& e) override { Slider::mouseEnter (e); startTimerHz (60); }
+    void mouseExit (const juce::MouseEvent& e) override { Slider::mouseExit (e); startTimerHz (60); }
+    void mouseDown (const juce::MouseEvent& e) override { Slider::mouseDown (e); startTimerHz (60); }
+    void mouseUp (const juce::MouseEvent& e) override { Slider::mouseUp (e); startTimerHz (60); }
+private:
+    void timerCallback() override
+    {
+        const float th = isMouseOverOrDragging() ? 1.0f : 0.0f, tp = isMouseButtonDown() ? 1.0f : 0.0f;
+        hoverA += (th - hoverA) * 0.3f;
+        pressA += (tp - pressA) * 0.45f;
+        if (std::abs (th - hoverA) < 0.01f && std::abs (tp - pressA) < 0.01f) { hoverA = th; pressA = tp; stopTimer(); }
+        repaint();
+    }
+    float hoverA = 0, pressA = 0;
+};
+
 class Switch;
 class ModeBar;
 class Spectrum;
@@ -50,7 +107,7 @@ public:
     void mouseUp (const juce::MouseEvent&) override;
     void mouseMove (const juce::MouseEvent&) override;
     void mouseExit (const juce::MouseEvent&) override;
-    void setEqOpen (bool open);
+    void setEqOpen (bool open, bool animate = false);   // animated from the UI, at once for snapshots
     int preferredHeight() const;
     static constexpr int kWidth = 1120;
     static inline bool hideBanner = false;   // for the README picture (--snapshot --clean)
@@ -65,6 +122,9 @@ private:
     void soundChanged();
     void showMoreMenu();
     void refreshTexts();
+    void eqTick();
+    int eqHeight() const;
+    struct Ticker : juce::Timer { std::function<void()> tick; void timerCallback() override { if (tick) tick(); } } ticker;
     void bannerAction();
     juce::String toneText() const;
     juce::String whyText() const;
@@ -79,12 +139,12 @@ private:
     std::unique_ptr<LevelGraph> graph;
     std::unique_ptr<EqEditor> eq;
     std::unique_ptr<DeviceBox> deviceBox;
-    juce::Slider volume, fid, bass, surr, amb;
-    juce::TextButton resetSound, bannerButton, moreButton;
+    NeoSlider volume, fid, bass, surr, amb;
+    NeoButton resetSound, bannerButton, moreButton;
     juce::StringArray deviceGuids;
     Kind shownKind = Kind::Unknown;
     bool eqOpen = false, syncing = false, eqHover = false;
-    float eqAnim = 0.0f;                 // 0 closed .. 1 open (chevron, fade of the plot)
+    float eqAnim = 0.0f, eqHoverAmt = 0.0f;                 // 0 closed .. 1 open (chevron, fade of the plot)
     juce::Colour kcCur = col::accent;    // the mode colour, eased toward the current mode's
     juce::Image logo, gridImage;
     int graphTick = 0;

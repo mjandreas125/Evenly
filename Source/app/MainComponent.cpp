@@ -6,7 +6,7 @@ namespace rv::ui
 namespace
 {
 // Layout, in logical pixels (the window scales the whole thing for big monitors).
-constexpr int kTop = 20, kHead = 64, kBannerH = 64, kRow1 = 150, kRow2 = 400, kEqClosed = 60, kEqOpen = 290, kFoot = 30, kBottom = 14, kGap = 16;
+constexpr int kTop = 20, kHead = 64, kBannerH = 64, kRow1 = 150, kRow2 = 400, kEqClosed = 60, kEqOpen = 290, kBottom = 24, kGap = 16;
 constexpr int kPad = 24;
 
 juce::Colour lerpColour (juce::Colour a, juce::Colour b, float t) { return a.interpolatedWith (b, t); }
@@ -33,6 +33,8 @@ void RovnoLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int w,
 {
     const float cy = (float) y + (float) h * 0.5f;
     const juce::Colour c = s.findColour (juce::Slider::trackColourId);
+    float hover = s.isMouseOverOrDragging() ? 1.0f : 0.0f, press = s.isMouseButtonDown() ? 1.0f : 0.0f;
+    if (auto* ns = dynamic_cast<NeoSlider*> (&s)) { hover = ns->hoverAmount(); press = ns->pressAmount(); }
     g.setColour (juce::Colours::white.withAlpha (0.12f));
     g.fillRoundedRectangle ((float) x, cy - 1.0f, (float) w, 2.0f, 1.0f);
     if (pos > (float) x + 1.0f)
@@ -40,11 +42,10 @@ void RovnoLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int w,
         juce::Path line;
         line.startNewSubPath ((float) x, cy);
         line.lineTo (pos, cy);
-        glowStroke (g, line, c, 2.4f, s.isMouseOverOrDragging() ? 1.5f : 1.0f);
+        glowStroke (g, line, c, 2.4f, 1.0f + hover * 0.6f);
     }
-    const bool active = s.isMouseOverOrDragging();
-    const float r = s.isMouseButtonDown() ? 8.0f : (active ? 7.5f : 6.5f);
-    if (active) glowDot (g, { pos, cy }, r, c, s.isMouseButtonDown() ? 1.0f : 0.7f);
+    const float r = 6.5f + hover * 1.0f + press * 1.4f;
+    if (hover > 0.02f) glowDot (g, { pos, cy }, r, c, 0.25f + hover * 0.35f + press * 0.3f);
     g.setColour (col::bg);
     g.fillEllipse (pos - r, cy - r, r * 2, r * 2);
     g.setColour (c.brighter (0.2f));
@@ -745,6 +746,7 @@ MainComponent::MainComponent (Controller& controller) : c (controller)
     kcCur = kindColour (c.now().kind);
     setSize (kWidth, preferredHeight());
     syncFromController();
+    ticker.tick = [this] { eqTick(); };
     startTimerHz (30);
 }
 
@@ -813,17 +815,43 @@ void MainComponent::syncFromController()
 
 int MainComponent::preferredHeight() const
 {
+    // While the equalizer is opening or closing the window already has the open height: the panel
+    // unfolds inside it, and the window shrinks only after the panel has folded away.
+    const bool tall = eqOpen || eqAnim > 0.001f;
     return kTop + kHead + kGap + (banner() != Banner::None ? kBannerH + kGap : 0) + kRow1 + kGap + kRow2 + kGap
-           + (eqOpen ? kEqOpen : kEqClosed) + 10 + kFoot + kBottom;
+           + (tall ? kEqOpen : kEqClosed) + kBottom;
 }
 
-void MainComponent::setEqOpen (bool open)
+int MainComponent::eqHeight() const
+{
+    const float t = eqAnim < 0.5f ? 4 * eqAnim * eqAnim * eqAnim : 1 - std::pow (-2 * eqAnim + 2, 3.0f) / 2;   // ease in-out
+    return kEqClosed + juce::roundToInt ((float) (kEqOpen - kEqClosed) * t);
+}
+
+void MainComponent::setEqOpen (bool open, bool animate)
 {
     eqOpen = open;
-    eqAnim = open ? 1.0f : 0.0f;
+    if (! animate) eqAnim = open ? 1.0f : 0.0f;
     setSize (kWidth, preferredHeight());
     resized();
     repaint();
+    if (animate) ticker.startTimerHz (60);
+}
+
+// One step of the equalizer panel opening or closing (60 Hz, only while it moves).
+void MainComponent::eqTick()
+{
+    const float target = eqOpen ? 1.0f : 0.0f;
+    const float speed = 0.075f;   // about 0.22 s end to end
+    eqAnim = eqAnim < target ? std::min (target, eqAnim + speed) : std::max (target, eqAnim - speed);
+    const float th = eqHover ? 1.0f : 0.0f;
+    eqHoverAmt += (th - eqHoverAmt) * 0.3f;
+    const bool settled = eqAnim == target && std::abs (th - eqHoverAmt) < 0.01f;
+    if (settled) { eqHoverAmt = th; ticker.stopTimer(); }
+    const int h = preferredHeight();
+    if (getHeight() != h) setSize (kWidth, h);   // grows with the first step, shrinks after the last
+    resized();
+    repaint (0, eqR.getY() - 4, getWidth(), getHeight() - eqR.getY() + 4);
 }
 
 void MainComponent::soundChanged()
@@ -861,9 +889,6 @@ void MainComponent::timerCallback()
     const juce::String nowKey = st.title + st.artist + whyText() + toneText() + (st.running ? "1" : "0");
     if (nowKey != lastNow) { lastNow = nowKey; needPaint = true; }
     if (eqOpen) eq->set (c.tweaks (shownKind).eq, c.sound (shownKind).eq, st.tone, kcCur);
-    const float eqTarget = eqOpen ? 1.0f : 0.0f;
-    if (std::abs (eqTarget - eqAnim) > 0.01f) { eqAnim += (eqTarget - eqAnim) * 0.35f; needPaint = true; }
-    else eqAnim = eqTarget;
     if (needPaint) repaint();
 }
 
@@ -885,9 +910,7 @@ juce::String MainComponent::whyText() const
 juce::String MainComponent::toneText() const
 {
     const auto& st = c.now();
-    if (! c.toneAuto()) return L ("выключено", "off");
-    if (c.sound (st.kind).toneStrength <= 0) return L ("в этом режиме не нужна", "not used in this mode");
-    if (st.toneConfidence < 1.0f) return L ("слушаю запись…", "listening…");
+    if (! c.toneAuto() || c.sound (st.kind).toneStrength <= 0 || st.toneConfidence < 1.0f) return {};
     // Low = 60-210 Hz, mids = 400 Hz-1.4 kHz, clarity = 2.5-8.6 kHz (16 kHz hardly matters to the ear).
     const float low = (st.tone[0] + st.tone[1] + st.tone[2]) / 3;
     const float mid = (st.tone[3] + st.tone[4] + st.tone[5]) / 3;
@@ -901,7 +924,7 @@ juce::String MainComponent::toneText() const
     if (! parts.isEmpty()) return parts.joinIntoString (" · ");
     float most = 0;
     for (float t : st.tone) most = std::max (most, std::abs (t));
-    return most > 0.7f ? L ("небольшая правка тона", "a small tone touch-up") : L ("запись звучит нормально, правка не нужна", "the recording sounds fine as it is");
+    return most > 0.7f ? L ("небольшая правка тона", "a small tone touch-up") : juce::String();
 }
 
 void MainComponent::paint (juce::Graphics& g)
@@ -998,8 +1021,7 @@ void MainComponent::paint (juce::Graphics& g)
     g.setFont (font (15.0f));
     juce::String sub = st.artist;
     if (st.app.isNotEmpty()) sub = sub.isNotEmpty() ? sub + "  ·  " + st.app : st.app;
-    if (nothing) sub = L ("Включите видео или музыку: режим подберётся сам", "Play a video or music: the mode picks itself");
-    else if (unnamed) sub = L ("программа не сообщила название, режим по звуку", "no title from the app; the mode follows the sound");
+    if (nothing || unnamed) sub = {};
     g.drawText (sub, nr.removeFromTop (24), juce::Justification::centredLeft, true);
     nr.removeFromTop (14);
     auto chip = nr.removeFromTop (30);
@@ -1021,15 +1043,7 @@ void MainComponent::paint (juce::Graphics& g)
     g.setColour (col::text);
     g.setFont (font (19.0f, 600));
     g.drawText (L ("Ровная громкость", "Even loudness"), lr.removeFromTop (28).withTrimmedRight (70), juce::Justification::centredLeft);
-    // legend of the two lines under the chart, and what the bars are
-    g.setColour (col::dim);
-    g.setFont (font (14.0f));
-    {
-        auto leg = lr.removeFromTop (24);
-        g.drawText (st.running ? L ("частоты на входе  ·  внизу — громкость за 90 секунд", "input by frequency  ·  below: loudness over 90 seconds")
-                               : L ("всё оживёт, когда пойдёт звук", "it all comes alive with sound"),
-                    leg, juce::Justification::centredLeft, true);
-    }
+    lr.removeFromTop (24);
     // two-line legend sits at the right of the graph's top edge
     {
         const int gy = graph->getY() - 6;
@@ -1082,18 +1096,14 @@ void MainComponent::paint (juce::Graphics& g)
                 juce::Rectangle<int> (soundR.getX() + 24, toneSwitch->getY(), soundR.getWidth() - 48 - 64, toneSwitch->getHeight()), juce::Justification::centredLeft, true);
     g.setColour (col::dim);
     g.setFont (font (14.0f));
-    g.drawFittedText (toneText(), juce::Rectangle<int> (soundR.getX() + 24, toneSwitch->getBottom() + 4, soundR.getWidth() - 48, 44), juce::Justification::topLeft, 2);
+    if (toneText().isNotEmpty())
+        g.drawFittedText (toneText(), juce::Rectangle<int> (soundR.getX() + 24, toneSwitch->getBottom() + 4, soundR.getWidth() - 48, 44), juce::Justification::topLeft, 2);
 
     // EQ
-    drawCard (g, eqR.toFloat(), eqHover ? col::card.brighter (0.05f) : col::card);
+    drawCard (g, eqR.toFloat(), col::card.brighter (0.05f * eqHoverAmt));
     g.setColour (col::text);
     g.setFont (font (19.0f, 600));
     g.drawText (L ("Эквалайзер", "Equalizer"), eqHeadR.reduced (24, 0), juce::Justification::centredLeft);
-    g.setColour (col::dim);
-    g.setFont (font (14.0f));
-    g.drawText (eqOpen ? L ("перетаскивайте точки · двойной щелчок — сброс точки", "drag the points · double-click resets a point")
-                       : L ("10 полос, правка вручную", "10 bands, by hand"),
-                eqHeadR.reduced (24, 0).withTrimmedLeft (140).withTrimmedRight (40), juce::Justification::centredRight);
     {
         const float cx = (float) eqHeadR.getRight() - 30.0f, cy = (float) eqHeadR.getCentreY();
         juce::Path ch;
@@ -1104,10 +1114,6 @@ void MainComponent::paint (juce::Graphics& g)
                       juce::AffineTransform::rotation (turn).translated (cx, cy));
     }
 
-    // footer
-    g.setColour (col::faint);
-    g.setFont (font (13.5f));
-    g.drawText (L ("Ctrl + Alt + ` — быстро сменить режим из любого окна", "Ctrl + Alt + ` switches the mode from any window"), footR, juce::Justification::centred);
 }
 
 void MainComponent::resized()
@@ -1143,7 +1149,7 @@ void MainComponent::resized()
     row2.removeFromLeft (kGap);
     soundR = row2;
     levelSwitch->setBounds (juce::Rectangle<int> (loudR.getRight() - 24 - 56, loudR.getY() + 16, 56, 34));
-    spectrum->setBounds (loudR.getX() + 24, loudR.getY() + 76, loudR.getWidth() - 48, 138);
+    spectrum->setBounds (loudR.getX() + 24, loudR.getY() + 66, loudR.getWidth() - 48, 150);
     graph->setBounds (loudR.getX() + 24, loudR.getY() + 242, loudR.getWidth() - 48, 108);
     volume.setBounds (loudR.getX() + 24 + 140, loudR.getBottom() - 18 - 36, loudR.getWidth() - 48 - 140 - 56, 36);
 
@@ -1158,17 +1164,20 @@ void MainComponent::resized()
         toneSwitch->setBounds (soundR.getRight() - 24 - 56, y + 20, 56, 34);
     }
     r.removeFromTop (kGap);
-    eqR = r.removeFromTop (eqOpen ? kEqOpen : kEqClosed);
+    eqR = r.removeFromTop (eqHeight());
     eqHeadR = eqR.withHeight (kEqClosed);
-    eq->setVisible (eqOpen);
-    if (eqOpen) eq->setBounds (eqR.withTrimmedTop (kEqClosed - 4).reduced (16, 10));
-    r.removeFromTop (10);
-    footR = r.removeFromTop (kFoot);
+    const bool plotShown = eqAnim > 0.02f;
+    eq->setVisible (plotShown);
+    if (plotShown)
+    {
+        eq->setBounds (eqR.withTrimmedTop (kEqClosed - 4).reduced (16, 10));
+        eq->setAlpha (juce::jlimit (0.0f, 1.0f, (eqAnim - 0.25f) / 0.75f));
+    }
 }
 
 void MainComponent::mouseUp (const juce::MouseEvent& e)
 {
-    if (eqHeadR.contains (e.getPosition())) setEqOpen (! eqOpen);
+    if (eqHeadR.contains (e.getPosition())) setEqOpen (! eqOpen, true);
 }
 
 void MainComponent::mouseMove (const juce::MouseEvent& e)
@@ -1178,13 +1187,13 @@ void MainComponent::mouseMove (const juce::MouseEvent& e)
     {
         eqHover = h;
         setMouseCursor (h ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
-        repaint (eqR);
+        ticker.startTimerHz (60);
     }
 }
 
 void MainComponent::mouseExit (const juce::MouseEvent&)
 {
-    if (eqHover) { eqHover = false; setMouseCursor (juce::MouseCursor::NormalCursor); repaint (eqR); }
+    if (eqHover) { eqHover = false; setMouseCursor (juce::MouseCursor::NormalCursor); ticker.startTimerHz (60); }
 }
 
 void MainComponent::bannerAction()
@@ -1220,6 +1229,8 @@ void MainComponent::showMoreMenu()
                                                        + " 0x" + juce::String::toHexString ((int) ks.keepError) + ")"; break;
             default: break;
         }
+    m.addItem (500, L ("Ctrl + Alt + ` — быстро сменить режим из любого окна", "Ctrl + Alt + ` switches the mode from any window"), false);
+    m.addSeparator();
     m.addItem (1, keepText, true, c.keepAwake());
     m.addItem (2, L ("Громкость как в FxSound (без выравнивания)", "FxSound-style loudness (no leveling)"), true, c.fxSoundLoudness());
     m.addSeparator();
