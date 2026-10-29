@@ -1119,35 +1119,39 @@ void MainComponent::paint (juce::Graphics& g)
 
     // now playing
     drawCard (g, nowR.toFloat());
-    auto nr = nowR.reduced (20, 18);
-    auto badge = nr.removeFromLeft (76).withHeight (76).toFloat();
+    // The icon and the text block are both centred vertically in the card; the artist line takes room only when there is one.
+    auto nr = nowR.reduced (20, 0);
+    const auto badge = juce::Rectangle<float> ((float) nr.getX(), (float) nowR.getCentreY() - 38.0f, 76.0f, 76.0f);
     {
-        const auto mid = badge.getCentre();
-        glowDot (g, mid, 28.0f, kc, 0.8f);
         g.setColour (col::bg.withAlpha (0.8f));
         g.fillEllipse (badge.reduced (4.0f));
         juce::Path ring;
         ring.addEllipse (badge.reduced (4.0f));
         glowStroke (g, ring, kc, 1.6f, 1.0f);
-        drawKindIcon (g, st.kind, badge.reduced (23.0f), kc.brighter (0.25f), 2.0f);
+        drawKindIcon (g, st.kind, badge.reduced (20.0f), kc.brighter (0.25f), 2.0f);
     }
-    nr.removeFromLeft (18);
-    g.setColour (col::text);
-    g.setFont (font (19.0f, 600));
+    nr.removeFromLeft (76 + 18);
     const bool unnamed = st.title.isEmpty() && st.app.isEmpty();
     const bool sounding = st.running && st.inLufs > -50;
     const bool nothing = unnamed && ! sounding;
     const juce::String title = ! unnamed ? (st.title.isNotEmpty() ? st.title : L ("Звук без названия", "Untitled sound"))
                              : sounding ? L ("Звук без названия", "Untitled sound")
                                         : L ("Сейчас ничего не играет", "Nothing is playing");
-    g.drawFittedText (title, nr.removeFromTop (28), juce::Justification::centredLeft, 1, 0.9f);
-    g.setColour (col::dim);
-    g.setFont (font (15.0f));
     juce::String sub = st.artist;
     if (st.app.isNotEmpty()) sub = sub.isNotEmpty() ? sub + "  ·  " + st.app : st.app;
     if (nothing || unnamed) sub = {};
-    g.drawText (sub, nr.removeFromTop (24), juce::Justification::centredLeft, true);
-    nr.removeFromTop (14);
+    const int blockH = 28 + (sub.isNotEmpty() ? 26 : 0) + 12 + 30;
+    nr = nr.withHeight (blockH).withY (nowR.getCentreY() - blockH / 2);
+    g.setColour (col::text);
+    g.setFont (font (19.0f, 600));
+    g.drawFittedText (title, nr.removeFromTop (28), juce::Justification::centredLeft, 1, 0.9f);
+    if (sub.isNotEmpty())
+    {
+        g.setColour (col::dim);
+        g.setFont (font (15.0f));
+        g.drawText (sub, nr.removeFromTop (26), juce::Justification::centredLeft, true);
+    }
+    nr.removeFromTop (12);
     auto chip = nr.removeFromTop (30);
     const juce::String kn = kindName (st.kind);
     g.setFont (font (14.0f, 600));
