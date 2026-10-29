@@ -27,7 +27,7 @@ juce_add_gui_app(Rovno PRODUCT_NAME "Rovno" COMPANY_NAME "Rovno" VERSION ${PROJE
     ICON_BIG Resources/icon-256.png ICON_SMALL Resources/icon-32.png)
 target_sources(Rovno PRIVATE
     Source/app/Main.cpp Source/app/Controller.cpp Source/app/SourceDetector.cpp Source/app/Devices.cpp
-    Source/app/KeepAlive.cpp Source/app/MainComponent.cpp Source/app/QuickMenu.cpp)
+    Source/app/KeepAlive.cpp Source/app/MainComponent.cpp Source/app/QuickMenu.cpp Source/app/I18n.cpp)
 target_compile_definitions(Rovno PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_DISPLAY_SPLASH_SCREEN=0
     JUCE_APPLICATION_NAME_STRING="Rovno" JUCE_APPLICATION_VERSION_STRING="${PROJECT_VERSION}")
 target_compile_options(Rovno PRIVATE /bigobj)

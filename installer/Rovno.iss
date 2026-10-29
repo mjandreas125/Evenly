@@ -1,5 +1,6 @@
-; Inno Setup script for Rovno.  Build: ISCC.exe /DBuildDir=C:\dev\build\Rovno Rovno.iss
-#define AppName "Rovno"
+﻿; Inno Setup script for Evenly (internal file names keep the project's old name, Rovno).
+; Build: ISCC.exe /DBuildDir=C:\dev\build\Rovno Rovno.iss
+#define AppName "Evenly"
 #define AppVersion "0.9.0"
 #ifndef BuildDir
   #define BuildDir "..\build"
@@ -9,17 +10,17 @@
 AppId={{6C2B9E41-0D2A-4B57-9A1E-52F3C8D0A7B4}
 AppName={#AppName}
 AppVersion={#AppVersion}
-AppVerName=Rovno {#AppVersion}
-AppPublisher=Rovno contributors
-AppPublisherURL=https://github.com/mjandreas125/rovno
+AppVerName=Evenly {#AppVersion}
+AppPublisher=Evenly contributors
+AppPublisherURL=https://github.com/mjandreas125/Evenly
 DefaultDirName={autopf}\Rovno
-DefaultGroupName=Rovno
+DefaultGroupName=Evenly
 DisableProgramGroupPage=yes
 PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\dist
-OutputBaseFilename=Rovno-{#AppVersion}-setup
+OutputBaseFilename=Evenly-{#AppVersion}-setup
 SetupIconFile=..\Resources\icon.ico
 UninstallDisplayIcon={app}\Rovno.exe
 LicenseFile=..\LICENSE
@@ -32,14 +33,58 @@ RestartApplications=no
 [Languages]
 Name: "ru"; MessagesFile: "compiler:Languages\Russian.isl"
 Name: "en"; MessagesFile: "compiler:Default.isl"
+Name: "de"; MessagesFile: "compiler:Languages\German.isl"
+Name: "fr"; MessagesFile: "compiler:Languages\French.isl"
+Name: "es"; MessagesFile: "compiler:Languages\Spanish.isl"
+Name: "it"; MessagesFile: "compiler:Languages\Italian.isl"
+Name: "pt"; MessagesFile: "compiler:Languages\Portuguese.isl"
+Name: "pl"; MessagesFile: "compiler:Languages\Polish.isl"
+Name: "nl"; MessagesFile: "compiler:Languages\Dutch.isl"
+Name: "sv"; MessagesFile: "compiler:Languages\Swedish.isl"
+Name: "fi"; MessagesFile: "compiler:Languages\Finnish.isl"
+Name: "tr"; MessagesFile: "compiler:Languages\Turkish.isl"
+Name: "uk"; MessagesFile: "compiler:Languages\Ukrainian.isl"
 
 [CustomMessages]
 ru.Autostart=Запускать вместе с Windows (в трее)
-en.Autostart=Start with Windows (in the tray)
 ru.Desktop=Значок на рабочем столе
-en.Desktop=Desktop icon
 ru.RunNow=Открыть «Ровно»
-en.RunNow=Open Rovno
+en.Autostart=Start with Windows (in the tray)
+en.Desktop=Desktop icon
+en.RunNow=Open Evenly
+de.Autostart=Mit Windows starten (im Infobereich)
+de.Desktop=Symbol auf dem Desktop
+de.RunNow=Evenly öffnen
+fr.Autostart=Démarrer avec Windows (dans la zone de notification)
+fr.Desktop=Icône sur le Bureau
+fr.RunNow=Ouvrir Evenly
+es.Autostart=Iniciar con Windows (en la bandeja)
+es.Desktop=Icono en el escritorio
+es.RunNow=Abrir Evenly
+it.Autostart=Avvia con Windows (nell'area di notifica)
+it.Desktop=Icona sul desktop
+it.RunNow=Apri Evenly
+pt.Autostart=Iniciar com o Windows (na bandeja)
+pt.Desktop=Ícone na área de trabalho
+pt.RunNow=Abrir o Evenly
+pl.Autostart=Uruchamiaj z Windows (w zasobniku)
+pl.Desktop=Ikona na pulpicie
+pl.RunNow=Otwórz Evenly
+nl.Autostart=Starten met Windows (in het systeemvak)
+nl.Desktop=Pictogram op het bureaublad
+nl.RunNow=Evenly openen
+sv.Autostart=Starta med Windows (i systemfältet)
+sv.Desktop=Ikon på skrivbordet
+sv.RunNow=Öppna Evenly
+fi.Autostart=Käynnistä Windowsin mukana (ilmaisinalueella)
+fi.Desktop=Kuvake työpöydälle
+fi.RunNow=Avaa Evenly
+tr.Autostart=Windows ile başlat (sistem tepsisinde)
+tr.Desktop=Masaüstü simgesi
+tr.RunNow=Evenly'yi aç
+uk.Autostart=Запускати разом із Windows (у треї)
+uk.Desktop=Значок на робочому столі
+uk.RunNow=Відкрити Evenly
 
 [Tasks]
 Name: "autostart"; Description: "{cm:Autostart}"
@@ -56,9 +101,14 @@ Source: "..\Resources\fonts\OFL.txt"; DestDir: "{app}"; DestName: "Onest-OFL.txt
 ; Settings for the effect: the app (user) writes them, the audio service (LOCAL SERVICE) reads them.
 Name: "{commonappdata}\Rovno"
 
+[InstallDelete]
+; shortcuts of the early builds, before the program was renamed
+Type: files; Name: "{group}\Rovno.lnk"
+Type: files; Name: "{autodesktop}\Rovno.lnk"
+
 [Icons]
-Name: "{group}\Rovno"; Filename: "{app}\Rovno.exe"
-Name: "{autodesktop}\Rovno"; Filename: "{app}\Rovno.exe"; Tasks: desktopicon
+Name: "{group}\Evenly"; Filename: "{app}\Rovno.exe"
+Name: "{autodesktop}\Evenly"; Filename: "{app}\Rovno.exe"; Tasks: desktopicon
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Rovno"; ValueData: """{app}\Rovno.exe"" --tray"; Flags: uninsdeletevalue; Tasks: autostart

@@ -64,6 +64,7 @@ private:
     void syncFromController();
     void soundChanged();
     void showMoreMenu();
+    void refreshTexts();
     void bannerAction();
     juce::String toneText() const;
     juce::String whyText() const;

@@ -26,10 +26,33 @@ inline juce::Colour kindColour (Kind k)
     }
 }
 
-// Russian when the Windows display language or the regional format is Russian, Ukrainian,
-// Belarusian or Kazakh (many people run English Windows with Russian regional settings).
-bool russian();
-inline juce::String L (const char* ruUtf8, const char* enUtf8) { return juce::String::fromUTF8 (russian() ? ruUtf8 : enUtf8); }
+// Interface language. Chosen in the More menu; "automatic" follows the Windows display language
+// (or, on English Windows, a Russian/Ukrainian regional format). The environment variable
+// ROVNO_LANG forces one. English and Russian are written at the call site, L (ru, en); the other
+// twelve languages come from tools/translations.py, keyed by the English text.
+enum class Lang { En, Ru, Et, Uk, De, Fr, Es, It, Pt, Pl, Nl, Sv, Fi, Tr };
+constexpr int kLangCount = 14;
+Lang language();
+void setLanguage (Lang);
+juce::String langCode (Lang);          // "en", "ru", "et", ...
+juce::String langName (Lang);          // the language's own name: "Eesti", "Deutsch", ...
+juce::String languageChoice();         // saved choice: a code, or "" for automatic
+void saveLanguageChoice (const juce::String& codeOrEmpty);
+void chooseLanguage (Lang);            // switch now and remember
+void useAutomaticLanguage();           // forget the choice, follow Windows
+inline std::function<void()>& languageListener() { static std::function<void()> f; return f; }   // window title, tray tooltip
+juce::String translate (const char* englishUtf8);   // English text -> current language (or itself)
+
+inline juce::String L (const char* ruUtf8, const char* enUtf8)
+{
+    switch (language())
+    {
+        case Lang::Ru: return juce::String::fromUTF8 (ruUtf8);
+        case Lang::En: return juce::String::fromUTF8 (enUtf8);
+        default: return translate (enUtf8);
+    }
+}
+inline juce::String appName() { return language() == Lang::Ru ? juce::String::fromUTF8 ("Ровно") : juce::String ("Evenly"); }
 
 inline juce::String kindName (Kind k)
 {

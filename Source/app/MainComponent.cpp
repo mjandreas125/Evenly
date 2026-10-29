@@ -3,18 +3,6 @@
 
 namespace rv::ui
 {
-bool russian()
-{
-    static const bool r = []
-    {
-        wchar_t forced[8] {};
-        if (GetEnvironmentVariableW (L"ROVNO_LANG", forced, 8) > 0) return _wcsicmp (forced, L"ru") == 0;
-        auto slav = [] (LANGID id) { const WORD p = PRIMARYLANGID (id); return p == LANG_RUSSIAN || p == LANG_UKRAINIAN || p == LANG_BELARUSIAN || p == LANG_KAZAK; };
-        return slav (GetUserDefaultUILanguage()) || slav (LANGIDFROMLCID (GetUserDefaultLCID()));
-    }();
-    return r;
-}
-
 namespace
 {
 // Layout, in logical pixels (the window scales the whole thing for big monitors).
@@ -922,7 +910,7 @@ void MainComponent::paint (juce::Graphics& g)
     if (logo.isValid()) g.drawImage (logo, lg, juce::RectanglePlacement::centred);
     g.setColour (col::text);
     g.setFont (font (30.0f, 700));
-    g.drawText (L ("Ровно", "Rovno"), juce::Rectangle<int> (headerR.getX() + 66, headerR.getY() + 2, 220, 36), juce::Justification::centredLeft);
+    g.drawText (appName(), juce::Rectangle<int> (headerR.getX() + 66, headerR.getY() + 2, 220, 36), juce::Justification::centredLeft);
     const bool working = c.enabled() && st.installed && st.running;
     const juce::Colour dot = ! c.enabled() ? col::faint : (working ? col::ok : col::warn);
     const float dotY = (float) headerR.getY() + 51.0f;
@@ -950,7 +938,7 @@ void MainComponent::paint (juce::Graphics& g)
         g.setFont (font (15.0f, 500));
         const auto text = banner() == Banner::NotInstalled
             ? L ("«Ровно» ещё не подключён к этому выходу. Windows спросит разрешение, звук пропадёт на секунду.",
-                 "Rovno is not connected to this output yet. Windows will ask for permission; sound stops for a second.")
+                 "Evenly is not connected to this output yet. Windows will ask for permission; sound stops for a second.")
             : L ("Звук сейчас идёт через FxSound, обработка будет двойной. Переключить вывод на этот выход?",
                  "Sound goes through FxSound now, so it would be processed twice. Switch the output to this device?");
         g.drawFittedText (text, bannerR.reduced (40, 8).withTrimmedRight (150), juce::Justification::centredLeft, 2);
@@ -1037,7 +1025,7 @@ void MainComponent::paint (juce::Graphics& g)
     auto volRow = loudR.reduced (24, 0).withTop (volume.getY()).withHeight (volume.getHeight());
     g.setColour (col::dim);
     g.setFont (font (15.0f, 500));
-    g.drawText (L ("Громкость", "Volume"), volRow.removeFromLeft (100), juce::Justification::centredLeft);
+    g.drawText (L ("Громкость", "Volume"), volRow.removeFromLeft (140), juce::Justification::centredLeft);
     g.setColour (col::text);
     g.setFont (font (15.0f, 600));
     g.drawText (juce::String (juce::roundToInt (c.volume() * 100)) + "%", volRow.removeFromRight (52), juce::Justification::centredRight);
@@ -1048,15 +1036,14 @@ void MainComponent::paint (juce::Graphics& g)
     g.setColour (col::text);
     g.setFont (font (19.0f, 600));
     g.drawText (L ("Звук: ", "Sound: ") + kindName (shownKind), sr.removeFromTop (28).withTrimmedRight (110), juce::Justification::centredLeft);
-    const char* namesRu[4] = { "Чёткость", "Бас", "Объём", "Атмосфера" };
-    const char* namesEn[4] = { "Clarity", "Bass", "Width", "Ambience" };
+    const juce::String names[4] = { L ("Чёткость", "Clarity"), L ("Бас", "Bass"), L ("Объём", "Width"), L ("Атмосфера", "Ambience") };
     juce::Slider* sliders[4] = { &fid, &bass, &surr, &amb };
     for (int i = 0; i < 4; ++i)
     {
         auto row = juce::Rectangle<int> (soundR.getX() + 24, sliders[i]->getY(), soundR.getWidth() - 48, sliders[i]->getHeight());
         g.setColour (col::dim);
         g.setFont (font (15.0f, 500));
-        g.drawText (L (namesRu[i], namesEn[i]), row.removeFromLeft (104), juce::Justification::centredLeft);
+        g.drawText (names[i], row.removeFromLeft (104), juce::Justification::centredLeft);
         g.setColour (col::text);
         g.setFont (font (15.0f, 600));
         g.drawText (juce::String (juce::roundToInt (sliders[i]->getValue() * 100)) + "%", row.removeFromRight (52), juce::Justification::centredRight);
@@ -1132,7 +1119,7 @@ void MainComponent::resized()
     levelSwitch->setBounds (juce::Rectangle<int> (loudR.getRight() - 24 - 56, loudR.getY() + 16, 56, 34));
     spectrum->setBounds (loudR.getX() + 24, loudR.getY() + 76, loudR.getWidth() - 48, 138);
     graph->setBounds (loudR.getX() + 24, loudR.getY() + 242, loudR.getWidth() - 48, 108);
-    volume.setBounds (loudR.getX() + 24 + 100, loudR.getBottom() - 18 - 36, loudR.getWidth() - 48 - 100 - 56, 36);
+    volume.setBounds (loudR.getX() + 24 + 140, loudR.getBottom() - 18 - 36, loudR.getWidth() - 48 - 140 - 56, 36);
 
     resetSound.setBounds (soundR.getRight() - 24 - 104, soundR.getY() + 15, 104, 34);
     {
@@ -1181,7 +1168,7 @@ void MainComponent::bannerAction()
         juce::String err;
         if (! c.installOnDevice (true, err) && err != "cancelled")
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, L ("Не получилось", "That did not work"),
-                                                    L ("Не удалось подключить «Ровно» к выходу: ", "Could not connect Rovno to the output: ") + err);
+                                                    L ("Не удалось подключить «Ровно» к выходу: ", "Could not connect Evenly to the output: ") + err);
     }
     else if (banner() == Banner::FxSound)
     {
@@ -1215,9 +1202,14 @@ void MainComponent::showMoreMenu()
     scale.addItem (20, L ("Авто (по размеру монитора)", "Automatic (by monitor size)"));
     for (int p : { 100, 125, 150, 175, 200 }) scale.addItem (p, juce::String (p) + " %");
     m.addSubMenu (L ("Размер окна", "Window size"), scale);
+    juce::PopupMenu langs;
+    langs.setLookAndFeel (&lnf);
+    langs.addItem (299, L ("Авто", "Automatic"), true, languageChoice().isEmpty());
+    for (int i = 0; i < kLangCount; ++i) langs.addItem (300 + i, langName ((Lang) i), true, languageChoice() == langCode ((Lang) i));
+    m.addSubMenu (L ("Язык", "Language"), langs);
     m.addSeparator();
     m.addItem (3, L ("Забыть, что программа выучила", "Forget what the app has learned"));
-    m.addItem (4, L ("Отключить «Ровно» от этого выхода", "Disconnect Rovno from this output"), c.now().installed);
+    m.addItem (4, L ("Отключить «Ровно» от этого выхода", "Disconnect Evenly from this output"), c.now().installed);
     m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (moreButton).withMinimumWidth (300), [this] (int r)
     {
         if (r == 1) c.setKeepAwake (! c.keepAwake());
@@ -1226,7 +1218,19 @@ void MainComponent::showMoreMenu()
         else if (r == 4) { juce::String err; c.installOnDevice (false, err); }
         else if (r == 20 && onScale) onScale (0);
         else if (r >= 100 && r <= 200 && onScale) onScale (r);
+        else if (r == 299) { useAutomaticLanguage(); refreshTexts(); }
+        else if (r >= 300 && r < 300 + kLangCount) { chooseLanguage ((Lang) (r - 300)); refreshTexts(); }
         syncFromController();
     });
+}
+
+// Texts that are set once on a component (the rest is drawn from L() on every paint).
+void MainComponent::refreshTexts()
+{
+    resetSound.setButtonText (L ("Сбросить", "Reset"));
+    moreButton.setButtonText (L ("Ещё", "More"));
+    if (auto* top = getTopLevelComponent()) top->setName (appName());
+    if (languageListener()) languageListener()();
+    repaint();
 }
 } // namespace rv::ui

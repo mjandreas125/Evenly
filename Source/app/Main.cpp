@@ -29,7 +29,7 @@ class MainWindow : public juce::DocumentWindow
 public:
     explicit MainWindow (Controller& c) : juce::DocumentWindow ("Rovno", col::bg, juce::DocumentWindow::closeButton | juce::DocumentWindow::minimiseButton)
     {
-        setName (L ("Ровно", "Rovno"));
+        setName (appName());
         setUsingNativeTitleBar (true);
         auto* content = new MainComponent (c);
         content->onScale = [this] (int percent)
@@ -62,7 +62,7 @@ public:
     {
         const auto icon = juce::ImageCache::getFromMemory (BinaryData::icon32_png, BinaryData::icon32_pngSize);
         setIconImage (icon, icon);
-        setIconTooltip (L ("Ровно", "Rovno"));
+        setIconTooltip (appName());
     }
     void mouseDown (const juce::MouseEvent& e) override
     {
@@ -137,6 +137,7 @@ public:
         window = std::make_unique<rv::ui::MainWindow> (*controller);
         quickMenu = std::make_unique<rv::ui::QuickMenu> (*controller);
         tray = std::make_unique<rv::ui::Tray> (*controller, [this] { toggleWindow(); });
+        rv::ui::languageListener() = [this] { if (tray) tray->setIconTooltip (rv::ui::appName()); };
         window->setVisible (! args.contains ("--tray"));
     }
 
