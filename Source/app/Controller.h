@@ -28,6 +28,13 @@ struct NowState
     std::array<float, 10> tone {};
     float toneConfidence = 0;
     std::deque<std::pair<float, float>> history;   // (in, out) short-term loudness, 2 per second, 90 s
+    // Spectrum of the incoming sound, third octaves. Rises at once and falls smoothly, so a pause
+    // fades out instead of dropping a hole into the picture.
+    std::array<float, (size_t) kBands> bands {};
+    std::array<float, (size_t) kBands> bandPeaks {};
+    KeepAlive::Status keepStatus = KeepAlive::Status::Off;
+    long keepError = 0;
+    juce::String keepStep;
 };
 
 class Controller : public juce::ChangeBroadcaster, private juce::Timer
@@ -102,6 +109,7 @@ private:
     Guess hintNow;
     Kind lastVoteKind = Kind::Unknown;
     int ticks = 0, stableTicks = 0;
+    uint32_t lastTickMs = 0;                  // to notice that the machine was asleep
 
     struct Watcher;
     std::unique_ptr<Watcher> watcher;         // polls what is playing on a background thread

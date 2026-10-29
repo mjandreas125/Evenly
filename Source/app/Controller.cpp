@@ -84,6 +84,8 @@ struct Controller::Watcher : juce::Thread
 Controller::Controller()
 {
     CoInitializeEx (nullptr, COINIT_APARTMENTTHREADED);   // the device calls below are COM
+    state.bands.fill (-96.0f);
+    state.bandPeaks.fill (-96.0f);
     load();
     refreshDevices();
     if (device.isEmpty())
@@ -288,8 +290,10 @@ void Controller::selectDevice (const juce::String& guid)
     link.setEndpoint (guid.toWideCharPointer());
     refreshDevices();
     keepAlive.stop();
-    for (const auto& d : deviceList)
-        if (juce::String (d.guid.c_str()) == device && d.digital && keepOn) keepAlive.start (d.guid);
+    if (keepOn && ! device.isEmpty())
+        for (const auto& d : deviceList)
+            if (juce::String (d.guid.c_str()) == device && d.digital)
+                keepAlive.start (d.id.empty() ? devices::endpointId (device.toWideCharPointer()) : d.id);
     saveSoon();
     applyParams();
     sendChangeMessage();
@@ -317,6 +321,20 @@ bool Controller::switchDefaultToDevice()
 // ---- the loop -------------------------------------------------------------------------------
 void Controller::timerCallback()
 {
+    // Coming back from sleep: the timer has not run for a long time, the outputs have been torn
+    // down and built again. Start the whole device side over instead of waiting for the next poll.
+    const uint32_t nowMs = juce::Time::getMillisecondCounter();
+    if (lastTickMs != 0 && nowMs - lastTickMs > 20000)
+    {
+        const uint32_t gap = (nowMs - lastTickMs) / 1000;
+        lastTickMs = nowMs;
+        log ("woke up after " + juce::String ((int) gap) + " s, reconnecting to the output");
+        refreshDevices();
+        selectDevice (device);
+        return;
+    }
+    lastTickMs = nowMs;
+
     std::vector<AnalysisFrame> frames;
     link.newFrames (frames);
     const ModeSound s = sound (state.kind);
@@ -324,6 +342,15 @@ void Controller::timerCallback()
     {
         features.push (f);
         if (toneOn && s.toneStrength > 0 && tone.push (f)) applyParams();
+    }
+    // Spectrum for the window: whatever came in this tick lifts a band at once, and every band
+    // slides down on its own. Silence then looks like a fade, never like a hole.
+    for (int b = 0; b < kBands; ++b)
+    {
+        float v = state.bands[(size_t) b] - 2.6f;                 // ~26 dB a second at 10 ticks/s
+        for (const auto& f : frames) v = std::max (v, f.bandsDb[b]);
+        state.bands[(size_t) b] = juce::jmax (-96.0f, v);
+        state.bandPeaks[(size_t) b] = juce::jmax (state.bandPeaks[(size_t) b] - 0.9f, state.bands[(size_t) b]);
     }
     if (const Telemetry* t = link.telemetry())
     {
@@ -338,6 +365,17 @@ void Controller::timerCallback()
     }
     if (ticks % 10 == 0) tick();
     if (ticks % 100 == 0) refreshDevices();
+    if (keepAlive.status() != state.keepStatus)
+    {
+        const char* names[] = { "off", "holding the output awake", "output unavailable, waiting", "FAILED" };
+        log (juce::String ("keep-awake: ") + names[(int) keepAlive.status()]
+             + (keepAlive.status() == KeepAlive::Status::Failed
+                    ? juce::String (" at ") + keepAlive.failedAt() + " 0x" + juce::String::toHexString ((int) keepAlive.error())
+                    : juce::String()));
+    }
+    state.keepStatus = keepAlive.status();
+    state.keepError = keepAlive.error();
+    state.keepStep = keepAlive.failedAt();
     if (saveAt != 0 && juce::Time::getMillisecondCounter() > saveAt) { saveAt = 0; save(); }
     link.flushToDisk();
 }

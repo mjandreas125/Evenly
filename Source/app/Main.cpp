@@ -1,7 +1,7 @@
 // Rovno: the app. One instance, lives in the tray; closing the window keeps the sound processing.
 //   Rovno.exe            open the window
 //   Rovno.exe --tray     start hidden in the tray (autostart)
-//   Rovno.exe --snapshot out.png [--eq]   render the window to a PNG and quit (for checking the look)
+//   Rovno.exe --snapshot out.png [--eq] [--scale 1.3]   render the window to a PNG and quit (for checking the look)
 #include "MainComponent.h"
 #include "QuickMenu.h"
 #include <juce_gui_extra/juce_gui_extra.h>
@@ -10,6 +10,20 @@
 
 namespace rv::ui
 {
+// Interface scale: 0 = automatic (the window is laid out for a 1080p screen and grows with the
+// monitor), otherwise a percentage the user picked in the More menu. Kept in a small file.
+juce::File scaleFile() { return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Rovno").getChildFile ("ui-scale.txt"); }
+int savedScale() { const auto f = scaleFile(); return f.existsAsFile() ? f.loadFileAsString().trim().getIntValue() : 0; }
+void saveScale (int percent) { const auto f = scaleFile(); f.getParentDirectory().createDirectory(); f.replaceWithText (juce::String (percent)); }
+void applyScale (int percent)
+{
+    float s = 1.0f;
+    if (percent >= 100) s = (float) percent / 100.0f;
+    else if (const auto* d = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())
+        s = juce::jlimit (1.0f, 1.4f, std::round ((float) d->userBounds.getHeight() / 1080.0f * 20.0f) / 20.0f);
+    juce::Desktop::getInstance().setGlobalScaleFactor (s);
+}
+
 class MainWindow : public juce::DocumentWindow
 {
 public:
@@ -17,7 +31,14 @@ public:
     {
         setName (L ("Ровно", "Rovno"));
         setUsingNativeTitleBar (true);
-        setContentOwned (new MainComponent (c), true);
+        auto* content = new MainComponent (c);
+        content->onScale = [this] (int percent)
+        {
+            saveScale (percent);
+            applyScale (percent);
+            centreWithSize (getWidth(), getHeight());
+        };
+        setContentOwned (content, true);
         setResizable (false, false);
         centreWithSize (getWidth(), getHeight());
         setIcon (juce::ImageCache::getFromMemory (BinaryData::icon256_png, BinaryData::icon256_pngSize));
@@ -81,13 +102,16 @@ public:
     void initialise (const juce::String& commandLine) override
     {
         controller = std::make_unique<rv::Controller>();
+        juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);   // the tray menu gets the same look
         const auto args = juce::StringArray::fromTokens (commandLine, true);
         const int snap = args.indexOf ("--snapshot");
         if (snap >= 0)
         {
             // Let the controller see the effect and what is playing, then draw and quit.
             const int wait = args.contains ("--wait") ? args[args.indexOf ("--wait") + 1].getIntValue() * 1000 : 2600;
-            juce::Timer::callAfterDelay (wait, [this, path = args[snap + 1].unquoted(), eq = args.contains ("--eq"), menu = args.contains ("--menu")]
+            rv::ui::MainComponent::hideBanner = args.contains ("--clean");
+            const float snapScale = args.contains ("--scale") ? args[args.indexOf ("--scale") + 1].getFloatValue() : 1.0f;
+            juce::Timer::callAfterDelay (wait, [this, snapScale, path = args[snap + 1].unquoted(), eq = args.contains ("--eq"), menu = args.contains ("--menu")]
             {
                 juce::Image img;
                 if (menu)
@@ -99,7 +123,7 @@ public:
                 {
                     rv::ui::MainComponent comp (*controller);
                     if (eq) comp.setEqOpen (true);
-                    img = comp.createComponentSnapshot (comp.getLocalBounds(), true, 1.0f);
+                    img = comp.createComponentSnapshot (comp.getLocalBounds(), true, snapScale);
                 }
                 juce::File (path).deleteFile();
                 juce::FileOutputStream out { juce::File (path) };
@@ -109,6 +133,7 @@ public:
             });
             return;
         }
+        rv::ui::applyScale (rv::ui::savedScale());
         window = std::make_unique<rv::ui::MainWindow> (*controller);
         quickMenu = std::make_unique<rv::ui::QuickMenu> (*controller);
         tray = std::make_unique<rv::ui::Tray> (*controller, [this] { toggleWindow(); });
@@ -120,6 +145,7 @@ public:
         tray.reset();
         quickMenu.reset();
         window.reset();
+        juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
         controller.reset();
     }
 
@@ -139,6 +165,7 @@ private:
         else showWindow();
     }
 
+    rv::ui::RovnoLookAndFeel lookAndFeel;
     std::unique_ptr<rv::Controller> controller;
     std::unique_ptr<rv::ui::MainWindow> window;
     std::unique_ptr<rv::ui::QuickMenu> quickMenu;

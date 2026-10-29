@@ -5,6 +5,7 @@
 #include <mmreg.h>
 #include <cstdarg>
 #include <cwchar>
+#include <mutex>
 #include <new>
 #include <sddl.h>
 
@@ -69,6 +70,26 @@ void logLine (const std::wstring& endpoint, const wchar_t* fmt, ...)
     wchar_t dir[MAX_PATH] {};
     if (! GetEnvironmentVariableW (L"ProgramData", dir, MAX_PATH)) wcscpy_s (dir, L"C:\\ProgramData");
     const std::wstring path = std::wstring (dir) + L"\\Rovno\\effect.log";
+    SYSTEMTIME t;
+    GetLocalTime (&t);
+    wchar_t msg[512];
+    va_list va;
+    va_start (va, fmt);
+    _vsnwprintf_s (msg, _TRUNCATE, fmt, va);
+    va_end (va);
+    // Windows can build and drop a stream many times a minute (an app probing the output, a device
+    // that keeps going away). Repeating the same line then buries everything useful, so say it once
+    // a minute at most.
+    {
+        static std::mutex guard;
+        static std::wstring lastMsg;
+        static ULONGLONG lastAt = 0;
+        const std::lock_guard<std::mutex> lock (guard);
+        const ULONGLONG now = GetTickCount64();
+        if (lastAt != 0 && now - lastAt < 60000 && lastMsg == msg) return;
+        lastMsg = msg;
+        lastAt = now;
+    }
     HANDLE f = CreateFileW (path.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS, 0, nullptr);
     if (f == INVALID_HANDLE_VALUE) return;
     LARGE_INTEGER size {};
@@ -78,13 +99,6 @@ void logLine (const std::wstring& endpoint, const wchar_t* fmt, ...)
         f = CreateFileW (path.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, CREATE_ALWAYS, 0, nullptr);
         if (f == INVALID_HANDLE_VALUE) return;
     }
-    SYSTEMTIME t;
-    GetLocalTime (&t);
-    wchar_t msg[512];
-    va_list va;
-    va_start (va, fmt);
-    _vsnwprintf_s (msg, _TRUNCATE, fmt, va);
-    va_end (va);
     wchar_t line[768];
     swprintf_s (line, L"%04u-%02u-%02u %02u:%02u:%02u.%03u pid %lu %s  %s\r\n", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond,
                 t.wMilliseconds, GetCurrentProcessId(), endpoint.c_str(), msg);

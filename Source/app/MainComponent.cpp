@@ -15,16 +15,25 @@ bool russian()
     return r;
 }
 
+namespace
+{
+// Layout, in logical pixels (the window scales the whole thing for big monitors).
+constexpr int kTop = 20, kHead = 64, kBannerH = 64, kRow1 = 150, kRow2 = 400, kEqClosed = 60, kEqOpen = 290, kFoot = 30, kBottom = 14, kGap = 16;
+constexpr int kPad = 24;
+
+juce::Colour lerpColour (juce::Colour a, juce::Colour b, float t) { return a.interpolatedWith (b, t); }
+} // namespace
+
 // ---- look and feel ---------------------------------------------------------------------------
 RovnoLookAndFeel::RovnoLookAndFeel()
 {
     setDefaultSansSerifTypeface (Fonts::get().regular);
-    setColour (juce::PopupMenu::backgroundColourId, col::cardHi);
+    // not fully opaque on purpose: JUCE makes the menu window opaque (white corners) otherwise;
+    // the panel itself is drawn in drawPopupMenuBackground
+    setColour (juce::PopupMenu::backgroundColourId, col::cardHi.withAlpha (0.99f));
     setColour (juce::PopupMenu::textColourId, col::text);
-    setColour (juce::PopupMenu::highlightedBackgroundColourId, col::line);
+    setColour (juce::PopupMenu::highlightedBackgroundColourId, juce::Colours::white.withAlpha (0.09f));
     setColour (juce::PopupMenu::highlightedTextColourId, col::text);
-    setColour (juce::ComboBox::textColourId, col::text);
-    setColour (juce::ComboBox::arrowColourId, col::dim);
     setColour (juce::TextButton::textColourOffId, col::text);
     setColour (juce::AlertWindow::backgroundColourId, col::cardHi);
     setColour (juce::AlertWindow::textColourId, col::text);
@@ -35,17 +44,30 @@ void RovnoLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int w,
                                          juce::Slider::SliderStyle, juce::Slider& s)
 {
     const float cy = (float) y + (float) h * 0.5f;
-    const juce::Rectangle<float> track ((float) x, cy - 2.5f, (float) w, 5.0f);
-    g.setColour (col::line);
-    g.fillRoundedRectangle (track, 2.5f);
-    const juce::Colour c = s.findColour (juce::Slider::trackColourId);
-    g.setGradientFill (juce::ColourGradient (c.withAlpha (0.75f), (float) x, cy, c, pos, cy, false));
-    g.fillRoundedRectangle (track.withRight (pos), 2.5f);
-    const float r = s.isMouseOverOrDragging() ? 9.0f : 8.0f;
+    const juce::Rectangle<float> track ((float) x, cy - 3.5f, (float) w, 7.0f);
     g.setColour (juce::Colours::black.withAlpha (0.35f));
-    g.fillEllipse (pos - r, cy - r + 1.5f, r * 2, r * 2);
-    g.setColour (col::text);
+    g.fillRoundedRectangle (track.expanded (0.0f, 0.5f), 3.5f);
+    g.setColour (col::line.brighter (0.05f));
+    g.fillRoundedRectangle (track, 3.5f);
+    const juce::Colour c = s.findColour (juce::Slider::trackColourId);
+    if (pos > (float) x + 1.0f)
+    {
+        g.setGradientFill (juce::ColourGradient (c.withAlpha (0.55f), (float) x, cy, c, pos, cy, false));
+        g.fillRoundedRectangle (track.withRight (pos), 3.5f);
+    }
+    const bool active = s.isMouseOverOrDragging();
+    const float r = s.isMouseButtonDown() ? 11.0f : (active ? 10.5f : 9.5f);
+    if (active)
+    {
+        g.setColour (c.withAlpha (s.isMouseButtonDown() ? 0.30f : 0.20f));
+        g.fillEllipse (pos - r - 6, cy - r - 6, (r + 6) * 2, (r + 6) * 2);
+    }
+    g.setColour (juce::Colours::black.withAlpha (0.45f));
+    g.fillEllipse (pos - r, cy - r + 2.0f, r * 2, r * 2);
+    g.setColour (juce::Colours::white);
     g.fillEllipse (pos - r, cy - r, r * 2, r * 2);
+    g.setColour (c);
+    g.fillEllipse (pos - r * 0.42f, cy - r * 0.42f, r * 0.84f, r * 0.84f);
 }
 
 void RovnoLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce::Colour&, bool over, bool down)
@@ -54,15 +76,17 @@ void RovnoLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& b,
     const bool primary = b.getProperties().getWithDefault ("primary", false);
     if (primary)
     {
+        g.setColour (col::accent.withAlpha (0.28f));
+        g.fillRoundedRectangle (r.expanded (2.0f), r.getHeight() / 2 + 2);
         g.setGradientFill (juce::ColourGradient (col::accent, r.getX(), r.getY(), col::accent2, r.getRight(), r.getBottom(), false));
         g.fillRoundedRectangle (r, r.getHeight() / 2);
-        if (over || down) { g.setColour (juce::Colours::white.withAlpha (down ? 0.18f : 0.10f)); g.fillRoundedRectangle (r, r.getHeight() / 2); }
+        if (over || down) { g.setColour (juce::Colours::white.withAlpha (down ? 0.20f : 0.12f)); g.fillRoundedRectangle (r, r.getHeight() / 2); }
     }
     else
     {
-        g.setColour (down ? col::line : (over ? col::cardHi.brighter (0.06f) : col::cardHi));
+        g.setColour (down ? col::line : (over ? col::cardHi.brighter (0.10f) : col::cardHi));
         g.fillRoundedRectangle (r, r.getHeight() / 2);
-        g.setColour (col::line);
+        g.setColour (over ? col::faint.withAlpha (0.8f) : col::line);
         g.drawRoundedRectangle (r, r.getHeight() / 2, 1.0f);
     }
 }
@@ -71,172 +95,491 @@ void RovnoLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b, b
 {
     const bool primary = b.getProperties().getWithDefault ("primary", false);
     g.setColour (primary ? juce::Colour (0xff1a1206) : col::text);
-    g.setFont (font (13.5f, 600));
+    g.setFont (font (15.0f, 600));
     g.drawText (b.getButtonText(), b.getLocalBounds(), juce::Justification::centred, true);
 }
 
-void RovnoLookAndFeel::drawComboBox (juce::Graphics& g, int w, int h, bool, int, int, int, int, juce::ComboBox&)
+void RovnoLookAndFeel::drawAlertBox (juce::Graphics& g, juce::AlertWindow& alert, const juce::Rectangle<int>& textArea, juce::TextLayout& layout)
 {
-    const juce::Rectangle<float> r (0.5f, 0.5f, (float) w - 1, (float) h - 1);
-    g.setColour (col::cardHi);
-    g.fillRoundedRectangle (r, r.getHeight() / 2);
-    g.setColour (col::line);
-    g.drawRoundedRectangle (r, r.getHeight() / 2, 1.0f);
-    juce::Path arrow;
-    const float ax = (float) w - 18.0f, ay = (float) h * 0.5f;
-    arrow.startNewSubPath (ax - 4, ay - 2);
-    arrow.lineTo (ax, ay + 2);
-    arrow.lineTo (ax + 4, ay - 2);
-    g.setColour (col::dim);
-    g.strokePath (arrow, juce::PathStrokeType (1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    g.setGradientFill (juce::ColourGradient (col::cardHi.brighter (0.06f), 0, 0, col::bg.brighter (0.03f), 0, (float) alert.getHeight(), false));
+    g.fillAll();
+    g.setColour (juce::Colours::white.withAlpha (0.10f));
+    g.drawRect (alert.getLocalBounds(), 1);
+
+    const auto type = alert.getAlertType();
+    if (type != juce::MessageBoxIconType::NoIcon)
+    {
+        const bool warn = type == juce::MessageBoxIconType::WarningIcon;
+        const bool ask = type == juce::MessageBoxIconType::QuestionIcon;
+        const juce::Colour c = warn ? col::warn : (ask ? col::accent : col::ok);
+        const auto badge = juce::Rectangle<float> (28.0f, (float) textArea.getY() + 2.0f, 44.0f, 44.0f);
+        g.setColour (c.withAlpha (0.18f));
+        g.fillEllipse (badge);
+        g.setColour (c);
+        g.drawEllipse (badge.reduced (0.5f), 1.5f);
+        juce::Path p;
+        const auto mid = badge.getCentre();
+        if (warn)
+        {
+            p.addRoundedRectangle (mid.x - 2.0f, mid.y - 11.0f, 4.0f, 14.0f, 2.0f);
+            p.addEllipse (mid.x - 2.5f, mid.y + 6.0f, 5.0f, 5.0f);
+            g.fillPath (p);
+        }
+        else if (ask)
+        {
+            g.setFont (font (26.0f, 700));
+            g.drawText ("?", badge, juce::Justification::centred);
+        }
+        else   // a tick: it is only ever "done"
+        {
+            p.startNewSubPath (mid.x - 9, mid.y + 1);
+            p.lineTo (mid.x - 3, mid.y + 7);
+            p.lineTo (mid.x + 9, mid.y - 7);
+            g.strokePath (p, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        }
+    }
+    g.setColour (col::text);
+    layout.draw (g, textArea.toFloat());
 }
 
 void RovnoLookAndFeel::drawPopupMenuBackground (juce::Graphics& g, int w, int h)
 {
-    g.fillAll (col::cardHi);
-    g.setColour (col::line);
-    g.drawRect (0, 0, w, h);
+    const auto panel = juce::Rectangle<float> (0, 0, (float) w, (float) h).reduced (10.0f);
+    juce::Path p;
+    p.addRoundedRectangle (panel, 16.0f);
+    juce::DropShadow (juce::Colours::black.withAlpha (0.55f), 14, { 0, 5 }).drawForPath (g, p);
+    g.setGradientFill (juce::ColourGradient (col::cardHi.brighter (0.08f), 0, panel.getY(), col::cardHi, 0, panel.getBottom(), false));
+    g.fillPath (p);
+    g.setColour (juce::Colours::white.withAlpha (0.12f));
+    g.strokePath (p, juce::PathStrokeType (1.0f));
+}
+
+void RovnoLookAndFeel::getIdealPopupMenuItemSize (const juce::String& text, bool isSeparator, int, int& idealWidth, int& idealHeight)
+{
+    if (isSeparator) { idealWidth = 50; idealHeight = 13; return; }
+    idealHeight = 40;
+    idealWidth = juce::GlyphArrangement::getStringWidthInt (getPopupMenuFont(), text) + 78;
+}
+
+void RovnoLookAndFeel::drawPopupMenuItem (juce::Graphics& g, const juce::Rectangle<int>& area, bool isSeparator, bool isActive,
+                                          bool isHighlighted, bool isTicked, bool hasSubMenu, const juce::String& text,
+                                          const juce::String&, const juce::Drawable*, const juce::Colour* textColour)
+{
+    if (isSeparator)
+    {
+        g.setColour (juce::Colours::white.withAlpha (0.10f));
+        g.fillRect (area.reduced (16, 0).withHeight (1).withY (area.getCentreY()));
+        return;
+    }
+    auto r = area.reduced (6, 2).toFloat();
+    const juce::Colour base = textColour ? *textColour : col::text;
+    if (isHighlighted && isActive)
+    {
+        g.setColour (juce::Colours::white.withAlpha (0.10f));
+        g.fillRoundedRectangle (r, 10.0f);
+    }
+    g.setColour (isActive ? base : base.withAlpha (0.38f));
+    g.setFont (getPopupMenuFont());
+    g.drawText (text, r.withTrimmedLeft (38).withTrimmedRight (14), juce::Justification::centredLeft, true);
+    if (isTicked)
+    {
+        juce::Path t;
+        const float cx = r.getX() + 19.0f, cy = r.getCentreY();
+        t.startNewSubPath (cx - 6, cy);
+        t.lineTo (cx - 1.5f, cy + 4.5f);
+        t.lineTo (cx + 6.5f, cy - 5);
+        g.setColour (col::accent);
+        g.strokePath (t, juce::PathStrokeType (2.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
+    if (hasSubMenu)
+    {
+        juce::Path a;
+        const float ax = r.getRight() - 16.0f, ay = r.getCentreY();
+        a.startNewSubPath (ax - 3, ay - 5); a.lineTo (ax + 3, ay); a.lineTo (ax - 3, ay + 5);
+        g.setColour (col::dim);
+        g.strokePath (a, juce::PathStrokeType (1.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
 }
 
 // ---- switch ----------------------------------------------------------------------------------
 class Switch : public juce::ToggleButton, private juce::Timer
 {
 public:
-    Switch() { setClickingTogglesState (true); onStateChange = [this] { startTimerHz (60); }; }
+    Switch() { setClickingTogglesState (true); setMouseCursor (juce::MouseCursor::PointingHandCursor); onStateChange = [this] { startTimerHz (60); }; }
     void paintButton (juce::Graphics& g, bool over, bool) override
     {
-        auto r = getLocalBounds().toFloat().reduced (1.0f);
-        const juce::Colour on = getProperties().getWithDefault ("colour", (int) col::accent.getARGB()).toString().isEmpty()
-                                    ? col::accent : juce::Colour ((juce::uint32) (juce::int64) getProperties().getWithDefault ("colour", (juce::int64) col::accent.getARGB()));
-        g.setColour (col::line.interpolatedWith (on, pos));
+        auto r = getLocalBounds().toFloat().reduced (3.0f);
+        const float e = easeOut (pos);
+        if (e > 0.02f)
+        {
+            g.setColour (onColour.withAlpha (0.22f * e));
+            g.fillRoundedRectangle (r.expanded (3.0f), r.getHeight() / 2 + 3.0f);
+        }
+        g.setColour (col::line.brighter (0.12f).interpolatedWith (onColour, e));
         g.fillRoundedRectangle (r, r.getHeight() / 2);
-        if (over) { g.setColour (juce::Colours::white.withAlpha (0.06f)); g.fillRoundedRectangle (r, r.getHeight() / 2); }
+        if (over) { g.setColour (juce::Colours::white.withAlpha (0.07f)); g.fillRoundedRectangle (r, r.getHeight() / 2); }
         const float d = r.getHeight() - 6.0f;
         const float kx = r.getX() + 3.0f + pos * (r.getWidth() - d - 6.0f);
-        g.setColour (juce::Colours::black.withAlpha (0.25f));
+        g.setColour (juce::Colours::black.withAlpha (0.30f));
         g.fillEllipse (kx, r.getY() + 4.0f, d, d);
         g.setColour (juce::Colours::white);
         g.fillEllipse (kx, r.getY() + 3.0f, d, d);
     }
+    void snap() { pos = getToggleState() ? 1.0f : 0.0f; repaint(); }
+    juce::Colour onColour = col::accent;
 private:
     void timerCallback() override
     {
         const float target = getToggleState() ? 1.0f : 0.0f;
-        pos += (target - pos) * 0.35f;
+        pos += (target - pos) * 0.32f;
         if (std::abs (target - pos) < 0.01f) { pos = target; stopTimer(); }
         repaint();
     }
     float pos = 0;
-public:
-    void snap() { pos = getToggleState() ? 1.0f : 0.0f; repaint(); }
 };
 
-// ---- the five modes --------------------------------------------------------------------------
-class ModeBar : public juce::Component
+// ---- the five modes: one pill glides to the chosen tile ----------------------------------------
+class ModeBar : public juce::Component, private juce::Timer
 {
 public:
     std::function<void (Kind)> onPick;   // Kind::Unknown = auto
-    void set (bool autoOn, Kind current) { isAuto = autoOn; now = current; repaint(); }
+    ModeBar() { setMouseCursor (juce::MouseCursor::PointingHandCursor); startTimerHz (60); }
+    void set (bool autoOn, Kind current)
+    {
+        isAuto = autoOn;
+        now = current;
+        selIndex = autoOn ? 0 : indexOf (current);
+        if (! seeded) { pillX = (float) selIndex; pillColour = kindColour (order()[(size_t) selIndex]); seeded = true; }
+        repaint();
+    }
 
     void paint (juce::Graphics& g) override
     {
         const auto items = order();
         const float w = (float) getWidth() / (float) items.size();
+        auto tileR = [&] (size_t i) { return juce::Rectangle<float> (w * (float) i, 0, w, (float) getHeight()).reduced (4.0f, 0.0f); };
+        for (size_t i = 0; i < items.size(); ++i)
+        {
+            auto r = tileR (i);
+            const bool active = items[i] != Kind::Unknown && now == items[i];   // what is playing in auto mode
+            drawCard (g, r, col::card.brighter (0.02f + hoverA[i] * 0.06f), 18.0f);
+            if (isAuto && active)
+            {
+                g.setColour (kindColour (items[i]).withAlpha (0.55f));
+                g.drawRoundedRectangle (r.reduced (0.5f), 18.0f, 1.4f);
+            }
+        }
+        // the gliding selection
+        {
+            auto r = juce::Rectangle<float> (w * pillX, 0, w, (float) getHeight()).reduced (4.0f, 0.0f);
+            juce::Path p;
+            p.addRoundedRectangle (r, 18.0f);
+            juce::DropShadow (pillColour.withAlpha (0.35f), 16, { 0, 3 }).drawForPath (g, p);
+            g.setColour (col::card);
+            g.fillPath (p);
+            g.setGradientFill (juce::ColourGradient (pillColour.withAlpha (0.30f), r.getX(), r.getY(), pillColour.withAlpha (0.10f), r.getX(), r.getBottom(), false));
+            g.fillPath (p);
+            g.setColour (pillColour.withAlpha (0.95f));
+            g.strokePath (p, juce::PathStrokeType (1.8f));
+        }
         for (size_t i = 0; i < items.size(); ++i)
         {
             const Kind k = items[i];
-            auto r = juce::Rectangle<float> (w * (float) i, 0, w, (float) getHeight()).reduced (3.0f, 0.0f);
-            const bool selected = k == Kind::Unknown ? isAuto : (! isAuto && now == k);
-            const bool active = k != Kind::Unknown && now == k;   // what is playing in auto mode
+            auto r = tileR (i);
+            const float nearPill = juce::jlimit (0.0f, 1.0f, 1.0f - std::abs (pillX - (float) i));
+            const bool active = k != Kind::Unknown && now == k;
             const juce::Colour kc = kindColour (k);
-            if (selected)
+            juce::Colour ic = col::dim.interpolatedWith (kc, nearPill);
+            if (isAuto && active && nearPill < 0.5f) ic = kc;
+            const float iconSize = 36.0f;
+            drawKindIcon (g, k, juce::Rectangle<float> (r.getCentreX() - iconSize / 2, r.getY() + 30.0f - hoverA[i] * 2.0f, iconSize, iconSize), ic, 2.2f);
+            g.setColour (col::dim.interpolatedWith (col::text, juce::jmax (nearPill, hoverA[i] * 0.7f)));
+            g.setFont (font (15.5f, nearPill > 0.5f ? 600 : 500));
+            g.drawText (kindName (k), r.withTop (r.getY() + 84.0f).withHeight (24.0f), juce::Justification::centred);
+            if (k == Kind::Unknown)
             {
-                g.setColour (kc.withAlpha (0.16f));
-                g.fillRoundedRectangle (r, 14.0f);
-                g.setColour (kc.withAlpha (0.85f));
-                g.drawRoundedRectangle (r.reduced (0.75f), 14.0f, 1.5f);
+                g.setColour (col::faint);
+                g.setFont (font (13.0f));
+                g.drawText (L ("само", "automatic"), r.withTop (r.getY() + 106.0f).withHeight (20.0f), juce::Justification::centred);
             }
-            else
-            {
-                g.setColour (hover == (int) i ? col::cardHi.brighter (0.05f) : col::cardHi);
-                g.fillRoundedRectangle (r, 14.0f);
-                g.setColour (isAuto && active ? kc.withAlpha (0.6f) : col::line);
-                g.drawRoundedRectangle (r.reduced (0.5f), 14.0f, isAuto && active ? 1.3f : 1.0f);
-            }
-            const juce::Colour ic = selected || (isAuto && active) ? kc : col::dim;
-            drawKindIcon (g, k, juce::Rectangle<float> (r.getCentreX() - 12.0f, r.getY() + 12.0f, 24.0f, 24.0f), ic, 1.8f);
-            g.setColour (selected ? col::text : col::dim);
-            g.setFont (font (12.5f, selected ? 600 : 500));
-            g.drawText (kindName (k), r.withTop (r.getY() + 41.0f).withHeight (18.0f), juce::Justification::centred);
         }
     }
-    void mouseMove (const juce::MouseEvent& e) override { const int h = indexAt (e.x); if (h != hover) { hover = h; repaint(); } }
-    void mouseExit (const juce::MouseEvent&) override { hover = -1; repaint(); }
+    void mouseMove (const juce::MouseEvent& e) override { hover = indexAt (e.x); }
+    void mouseExit (const juce::MouseEvent&) override { hover = -1; }
     void mouseUp (const juce::MouseEvent& e) override
     {
         const int i = indexAt (e.x);
         if (i >= 0 && onPick) onPick (order()[(size_t) i]);
     }
 private:
+    void timerCallback() override
+    {
+        if (! isShowing()) return;
+        bool moving = false;
+        const float tp = (float) selIndex;
+        if (std::abs (tp - pillX) > 0.002f) { pillX += (tp - pillX) * 0.22f; moving = true; } else pillX = tp;
+        const juce::Colour tc = kindColour (order()[(size_t) selIndex]);
+        if (pillColour != tc) { pillColour = lerpColour (pillColour, tc, 0.2f); if (pillColour.getARGB() == tc.getARGB()) pillColour = tc; moving = true; }
+        for (int i = 0; i < 5; ++i)
+        {
+            const float t = hover == i ? 1.0f : 0.0f;
+            if (std::abs (t - hoverA[(size_t) i]) > 0.01f) { hoverA[(size_t) i] += (t - hoverA[(size_t) i]) * 0.3f; moving = true; }
+        }
+        if (moving) repaint();
+    }
     static std::vector<Kind> order() { return { Kind::Unknown, Kind::Music, Kind::Speech, Kind::Movie, Kind::Game }; }
+    static int indexOf (Kind k) { const auto o = order(); for (size_t i = 0; i < o.size(); ++i) if (o[i] == k) return (int) i; return 0; }
     int indexAt (int x) const { return juce::jlimit (0, 4, x * 5 / juce::jmax (1, getWidth())); }
-    bool isAuto = true;
+    bool isAuto = true, seeded = false;
     Kind now = Kind::Music;
-    int hover = -1;
+    int selIndex = 0, hover = -1;
+    float pillX = 0;
+    std::array<float, 5> hoverA {};
+    juce::Colour pillColour = col::accent;
+};
+
+// ---- the output chooser: a pill that opens the rounded menu -----------------------------------
+class DeviceBox : public juce::Component
+{
+public:
+    std::function<void (int)> onPick;
+    DeviceBox() { setMouseCursor (juce::MouseCursor::PointingHandCursor); }
+    void set (const juce::StringArray& labels, int selected) { items = labels; sel = selected; repaint(); }
+    void paint (juce::Graphics& g) override
+    {
+        auto r = getLocalBounds().toFloat().reduced (0.5f);
+        g.setColour (open ? col::line : (over ? col::cardHi.brighter (0.10f) : col::cardHi));
+        g.fillRoundedRectangle (r, r.getHeight() / 2);
+        g.setColour (open ? col::accent.withAlpha (0.8f) : (over ? col::faint.withAlpha (0.8f) : col::line));
+        g.drawRoundedRectangle (r, r.getHeight() / 2, 1.0f);
+        // a small speaker
+        const float ix = r.getX() + 20.0f, iy = r.getCentreY();
+        juce::Path sp;
+        sp.startNewSubPath (ix - 6, iy - 3); sp.lineTo (ix - 2, iy - 3); sp.lineTo (ix + 3, iy - 7);
+        sp.lineTo (ix + 3, iy + 7); sp.lineTo (ix - 2, iy + 3); sp.lineTo (ix - 6, iy + 3); sp.closeSubPath();
+        g.setColour (col::dim);
+        g.fillPath (sp);
+        juce::Path wave;
+        wave.addCentredArc (ix + 3, iy, 6, 6, 0, 0.9f, 2.2f, true);
+        g.strokePath (wave, juce::PathStrokeType (1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.setColour (col::text);
+        g.setFont (font (15.0f, 500));
+        const juce::String t = sel >= 0 && sel < items.size() ? items[sel] : L ("Выберите выход", "Pick an output");
+        g.drawText (t, r.withTrimmedLeft (42).withTrimmedRight (40), juce::Justification::centredLeft, true);
+        juce::Path arrow;
+        const float ax = r.getRight() - 22.0f, ay = r.getCentreY();
+        arrow.startNewSubPath (ax - 5, ay - 2.5f); arrow.lineTo (ax, ay + 2.5f); arrow.lineTo (ax + 5, ay - 2.5f);
+        g.setColour (col::dim);
+        g.strokePath (arrow, juce::PathStrokeType (1.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
+    void mouseEnter (const juce::MouseEvent&) override { over = true; repaint(); }
+    void mouseExit (const juce::MouseEvent&) override { over = false; repaint(); }
+    void mouseUp (const juce::MouseEvent& e) override
+    {
+        if (! contains (e.getPosition()) || items.isEmpty()) return;
+        juce::PopupMenu m;
+        m.setLookAndFeel (&getLookAndFeel());
+        for (int i = 0; i < items.size(); ++i) m.addItem (i + 1, items[i], true, i == sel);
+        open = true;
+        repaint();
+        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMinimumWidth (getWidth()).withStandardItemHeight (40),
+                         [safe = juce::Component::SafePointer<DeviceBox> (this)] (int r)
+                         {
+                             if (! safe) return;
+                             safe->open = false;
+                             safe->repaint();
+                             if (r > 0 && safe->onPick) safe->onPick (r - 1);
+                         });
+    }
+private:
+    juce::StringArray items;
+    int sel = -1;
+    bool over = false, open = false;
+};
+
+// ---- the spectrum of what is coming in, third octaves (50 Hz .. 16 kHz) ------------------------
+// The Controller rises at once and sinks slowly; this view eases a little further at 60 fps so the
+// bars move like a meter, and a thin mark above each bar keeps its recent top for a moment.
+class Spectrum : public juce::Component, private juce::Timer
+{
+public:
+    Spectrum() { startTimerHz (60); }
+    void set (const std::array<float, (size_t) kBands>& b, const std::array<float, (size_t) kBands>& p, juce::Colour c, bool on)
+    {
+        target = b;
+        targetPeaks = p;
+        colour = c;
+        live = on;
+        if (! seeded) { shown = b; shownPeaks = p; seeded = true; }   // first picture is the real one
+    }
+    void paint (juce::Graphics& g) override
+    {
+        const auto all = getLocalBounds().toFloat();
+        const auto r = all.withTrimmedBottom (22.0f);
+        // Measured on real material through this engine: a third octave peaks around -6 dB and
+        // ordinary content sits between -50 and -10, so this window fills the bars without pinning
+        // them to the top.
+        const float lo = -66.0f, hi = -6.0f;
+        auto hOf = [&] (float db) { return juce::jlimit (0.0f, 1.0f, (db - lo) / (hi - lo)) * (r.getHeight() - 2.0f); };
+        const float step = r.getWidth() / (float) kBands;
+        const float w = juce::jmax (4.0f, step - 4.0f);
+        const juce::Colour base = live ? colour : col::dim;
+        for (int i = 0; i < kBands; ++i)
+        {
+            const float x = r.getX() + step * (float) i + (step - w) * 0.5f;
+            g.setColour (juce::Colours::white.withAlpha (0.045f));
+            g.fillRoundedRectangle (x, r.getY(), w, r.getHeight(), w * 0.5f);
+            const float h = hOf (shown[(size_t) i]);
+            if (h > 0.6f)
+            {
+                const float hh = juce::jmax (h, w);
+                g.setGradientFill (juce::ColourGradient (base, 0, r.getBottom() - hh, base.withAlpha (0.28f), 0, r.getBottom(), false));
+                g.fillRoundedRectangle (x, r.getBottom() - hh, w, hh, w * 0.5f);
+                g.setColour (base.brighter (0.6f).withAlpha (0.55f));
+                g.fillRoundedRectangle (x, r.getBottom() - hh, w, juce::jmin (3.0f, hh), 1.5f);
+            }
+            const float ph = hOf (shownPeaks[(size_t) i]);
+            if (ph > 3.0f)
+            {
+                g.setColour (base.brighter (0.3f).withAlpha (live ? 0.75f : 0.25f));
+                g.fillRoundedRectangle (x, r.getBottom() - ph - 3.0f, w, 2.0f, 1.0f);
+            }
+        }
+        g.setColour (col::faint);
+        g.setFont (font (12.5f, 500));
+        const char* labels[5] = { "50", "200", "800", "3,2k", "12k" };
+        for (int k = 0; k < 5; ++k)
+        {
+            const float cx = r.getX() + step * ((float) (k * 6) + 0.5f);
+            g.drawText (labels[k], juce::Rectangle<float> (cx - 24, all.getBottom() - 18, 48, 18), juce::Justification::centred);
+        }
+    }
+private:
+    void timerCallback() override
+    {
+        if (! isShowing()) return;
+        bool changed = false;
+        for (size_t i = 0; i < (size_t) kBands; ++i)
+        {
+            const float a = shown[i] + (target[i] - shown[i]) * 0.45f;
+            const float b = shownPeaks[i] + (targetPeaks[i] - shownPeaks[i]) * 0.35f;
+            if (std::abs (a - shown[i]) > 0.02f || std::abs (b - shownPeaks[i]) > 0.02f) changed = true;
+            shown[i] = a;
+            shownPeaks[i] = b;
+        }
+        if (changed) repaint();
+    }
+    std::array<float, (size_t) kBands> target {}, targetPeaks {}, shown {}, shownPeaks {};
+    juce::Colour colour = col::accent;
+    bool live = true, seeded = false;
+public:
+    void prime() { shown.fill (-90.0f); shownPeaks.fill (-90.0f); target.fill (-90.0f); targetPeaks.fill (-90.0f); seeded = false; }
 };
 
 // ---- loudness in and out over the last 90 s ----------------------------------------------------
 class LevelGraph : public juce::Component
 {
 public:
-    void set (const std::deque<std::pair<float, float>>& h, float target, bool on)
+    void set (const std::deque<std::pair<float, float>>& h, float target, bool on, juce::Colour c)
     {
         hist.assign (h.begin(), h.end());
         tgt = target;
         enabled = on;
+        colour = c;
         repaint();
     }
     void paint (juce::Graphics& g) override
     {
-        auto r = getLocalBounds().toFloat();
+        auto all = getLocalBounds().toFloat();
+        auto r = all.withTrimmedLeft (34.0f).withTrimmedBottom (20.0f);
         const float lo = -42.0f, hi = -4.0f;
         auto yOf = [&] (float v) { return r.getBottom() - (juce::jlimit (lo, hi, v) - lo) / (hi - lo) * r.getHeight(); };
+        // scale
+        g.setFont (font (12.5f, 500));
+        for (float db : { -10.0f, -20.0f, -30.0f })
+        {
+            g.setColour (juce::Colours::white.withAlpha (0.06f));
+            g.fillRect (r.getX(), yOf (db), r.getWidth(), 1.0f);
+            g.setColour (col::faint);
+            g.drawText (juce::String ((int) db), juce::Rectangle<float> (all.getX(), yOf (db) - 9, 28, 18), juce::Justification::centredRight);
+        }
+        g.setColour (col::faint);
+        g.drawText (L ("90 с назад", "90 s ago"), juce::Rectangle<float> (r.getX(), all.getBottom() - 18, 110, 18), juce::Justification::centredLeft);
+        g.drawText (L ("сейчас", "now"), juce::Rectangle<float> (r.getRight() - 80, all.getBottom() - 18, 80, 18), juce::Justification::centredRight);
         // target line
-        g.setColour (col::faint.withAlpha (0.8f));
         const float ty = yOf (tgt);
-        for (float x = r.getX(); x < r.getRight(); x += 8.0f) g.drawLine (x, ty, juce::jmin (x + 4.0f, r.getRight()), ty, 1.0f);
+        g.setColour (col::dim.withAlpha (0.7f));
+        for (float x = r.getX(); x < r.getRight(); x += 9.0f) g.fillRect (x, ty - 0.75f, juce::jmin (4.5f, r.getRight() - x), 1.5f);
+        g.setFont (font (12.5f, 600));
+        g.setColour (col::dim);
+        const float ly = ty - 20 < r.getY() ? ty + 3 : ty - 20;
+        g.drawText (L ("цель", "target"), juce::Rectangle<float> (r.getRight() - 60, ly, 60, 18), juce::Justification::centredRight);
         if (hist.size() < 2) return;
         const size_t n = 180;
         const float dx = r.getWidth() / (float) (n - 1);
-        auto path = [&] (bool out)
+        const size_t start = n - hist.size();
+        auto xAt = [&] (size_t i) { return r.getX() + dx * (float) (start + i); };
+        // A pause is not a loudness of zero. Anything below the bottom of the chart carries no
+        // shape worth drawing, so those stretches become a break in the line: without this, every
+        // pause pulls the curve straight down to the floor and the picture is all holes.
+        auto onChart = [&] (float v) { return v > lo; };
+
+        // Shade the stretches where nothing came out, so a pause reads as a pause.
+        for (size_t i = 0; i < hist.size();)
         {
-            juce::Path p;
-            const size_t start = n - hist.size();
-            for (size_t i = 0; i < hist.size(); ++i)
+            if (onChart (hist[i].second)) { ++i; continue; }
+            const size_t from = i;
+            while (i < hist.size() && ! onChart (hist[i].second)) ++i;
+            const float x0 = xAt (from), x1 = xAt (i > 0 ? i - 1 : 0);
+            g.setColour (juce::Colours::white.withAlpha (0.04f));
+            g.fillRect (juce::Rectangle<float> (x0, r.getY(), juce::jmax (1.0f, x1 - x0), r.getHeight()));
+        }
+
+        const juce::Colour oc = enabled ? colour : col::dim;
+        // Every run of sound is drawn on its own; the gaps stay empty.
+        auto drawSeries = [&] (bool out)
+        {
+            for (size_t i = 0; i < hist.size();)
             {
-                const float v = out ? hist[i].second : hist[i].first;
-                const float x = r.getX() + dx * (float) (start + i), y = yOf (v < -69 ? lo : v);
-                if (i == 0) p.startNewSubPath (x, y); else p.lineTo (x, y);
+                const auto value = [&] (size_t k) { return out ? hist[k].second : hist[k].first; };
+                if (! onChart (value (i))) { ++i; continue; }
+                const size_t from = i;
+                while (i < hist.size() && onChart (value (i))) ++i;
+                if (i - from < 2) continue;
+                juce::Path p;
+                for (size_t k = from; k < i; ++k)
+                {
+                    const float x = xAt (k), y = yOf (value (k));
+                    if (k == from) p.startNewSubPath (x, y); else p.lineTo (x, y);
+                }
+                if (out)
+                {
+                    juce::Path fill (p);
+                    fill.lineTo (xAt (i - 1), r.getBottom());
+                    fill.lineTo (xAt (from), r.getBottom());
+                    fill.closeSubPath();
+                    g.setGradientFill (juce::ColourGradient (oc.withAlpha (0.30f), 0, r.getY(), oc.withAlpha (0.0f), 0, r.getBottom(), false));
+                    g.fillPath (fill);
+                    g.setColour (oc.withAlpha (0.25f));
+                    g.strokePath (p, juce::PathStrokeType (5.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+                    g.setColour (oc);
+                    g.strokePath (p, juce::PathStrokeType (2.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+                }
+                else
+                {
+                    g.setColour (col::dim.withAlpha (0.6f));
+                    g.strokePath (p, juce::PathStrokeType (1.5f, juce::PathStrokeType::curved));
+                }
             }
-            return p;
         };
-        g.setColour (col::dim.withAlpha (0.55f));
-        g.strokePath (path (false), juce::PathStrokeType (1.4f, juce::PathStrokeType::curved));
-        auto outPath = path (true);
-        const juce::Colour oc = enabled ? col::accent : col::dim;
-        juce::Path fill (outPath);
-        fill.lineTo (r.getRight(), r.getBottom());
-        fill.lineTo (r.getX() + dx * (float) (n - hist.size()), r.getBottom());
-        fill.closeSubPath();
-        g.setGradientFill (juce::ColourGradient (oc.withAlpha (0.22f), 0, r.getY(), oc.withAlpha (0.0f), 0, r.getBottom(), false));
-        g.fillPath (fill);
-        g.setColour (oc);
-        g.strokePath (outPath, juce::PathStrokeType (2.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        drawSeries (false);
+        drawSeries (true);
     }
 private:
     std::vector<std::pair<float, float>> hist;
     float tgt = -11;
     bool enabled = true;
+    juce::Colour colour = col::accent;
 };
 
 // ---- 10-band EQ: drag the points; the dashed line is the automatic tone correction -----------
@@ -255,22 +598,27 @@ public:
     void paint (juce::Graphics& g) override
     {
         const auto r = plot();
-        g.setColour (col::line);
-        g.drawLine (r.getX(), yOf (0), r.getRight(), yOf (0), 1.0f);
-        g.setFont (font (11.0f));
-        const char* labels[10] = { "60", "120", "210", "400", "730", "1.4k", "2.5k", "4.7k", "8.6k", "16k" };
+        g.setFont (font (12.5f, 500));
+        for (float db : { -12.0f, -6.0f, 0.0f, 6.0f, 12.0f })
+        {
+            g.setColour (db == 0.0f ? juce::Colours::white.withAlpha (0.16f) : juce::Colours::white.withAlpha (0.06f));
+            g.fillRect (r.getX(), yOf (db) - 0.5f, r.getWidth(), 1.0f);
+            g.setColour (col::faint);
+            g.drawText ((db > 0 ? "+" : "") + juce::String ((int) db), juce::Rectangle<float> (0, yOf (db) - 9, 34, 18), juce::Justification::centredRight);
+        }
+        const char* labels[10] = { "60", "120", "210", "400", "730", "1,4k", "2,5k", "4,7k", "8,6k", "16k" };
         for (int i = 0; i < 10; ++i)
         {
             g.setColour (col::faint);
-            g.drawText (labels[i], juce::Rectangle<float> (xOf (i) - 20, r.getBottom() + 4, 40, 14), juce::Justification::centred);
+            g.drawText (labels[i], juce::Rectangle<float> (xOf (i) - 24, r.getBottom() + 8, 48, 18), juce::Justification::centred);
         }
         juce::Path dashed;
         for (int i = 0; i < 10; ++i)
             if (i == 0) dashed.startNewSubPath (xOf (i), yOf (base[i] + t[i])); else dashed.lineTo (xOf (i), yOf (base[i] + t[i]));
         juce::Path dash;
-        const float lengths[2] = { 4.0f, 4.0f };
-        juce::PathStrokeType (1.4f).createDashedStroke (dash, dashed, lengths, 2);
-        g.setColour (col::dim.withAlpha (0.7f));
+        const float lengths[2] = { 5.0f, 5.0f };
+        juce::PathStrokeType (1.6f).createDashedStroke (dash, dashed, lengths, 2);
+        g.setColour (col::dim.withAlpha (0.75f));
         g.fillPath (dash);
         juce::Path p;
         for (int i = 0; i < 10; ++i)
@@ -283,21 +631,29 @@ public:
                 p.cubicTo (prev.x + (pt.x - prev.x) * 0.5f, prev.y, prev.x + (pt.x - prev.x) * 0.5f, pt.y, pt.x, pt.y);
             }
         }
+        juce::Path fill (p);
+        fill.lineTo (xOf (9), yOf (0));
+        fill.lineTo (xOf (0), yOf (0));
+        fill.closeSubPath();
+        g.setGradientFill (juce::ColourGradient (colour.withAlpha (0.20f), 0, r.getY(), colour.withAlpha (0.02f), 0, r.getBottom(), false));
+        g.fillPath (fill);
+        g.setColour (colour.withAlpha (0.25f));
+        g.strokePath (p, juce::PathStrokeType (6.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         g.setColour (colour);
-        g.strokePath (p, juce::PathStrokeType (2.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.strokePath (p, juce::PathStrokeType (2.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         for (int i = 0; i < 10; ++i)
         {
-            const float rad = i == drag ? 6.5f : 5.0f;
+            const float rad = i == drag ? 8.5f : 6.5f;
             g.setColour (col::card);
             g.fillEllipse (xOf (i) - rad, yOf (base[i]) - rad, rad * 2, rad * 2);
-            g.setColour (std::abs (u[i]) > 0.05f ? colour : col::dim);
-            g.drawEllipse (xOf (i) - rad, yOf (base[i]) - rad, rad * 2, rad * 2, 2.0f);
+            g.setColour (std::abs (u[i]) > 0.05f || i == drag ? colour : col::dim);
+            g.drawEllipse (xOf (i) - rad, yOf (base[i]) - rad, rad * 2, rad * 2, 2.4f);
         }
     }
     void mouseDown (const juce::MouseEvent& e) override
     {
         drag = -1;
-        float best = 18.0f;
+        float best = 26.0f;
         for (int i = 0; i < 10; ++i) if (std::abs (xOf (i) - (float) e.x) < best) { best = std::abs (xOf (i) - (float) e.x); drag = i; }
         mouseDrag (e);
     }
@@ -311,8 +667,8 @@ public:
     void mouseUp (const juce::MouseEvent&) override { drag = -1; repaint(); }
     void mouseDoubleClick (const juce::MouseEvent&) override { if (drag >= 0 && onChange) onChange (drag, 0.0f); }
 private:
-    juce::Rectangle<float> plot() const { return getLocalBounds().toFloat().reduced (14.0f, 6.0f).withTrimmedBottom (16.0f); }
-    float xOf (int i) const { const auto r = plot(); return r.getX() + r.getWidth() * (float) i / 9.0f; }
+    juce::Rectangle<float> plot() const { return getLocalBounds().toFloat().reduced (10.0f, 10.0f).withTrimmedLeft (36.0f).withTrimmedBottom (26.0f); }
+    float xOf (int i) const { const auto r = plot(); return r.getX() + 12.0f + (r.getWidth() - 24.0f) * (float) i / 9.0f; }
     float yOf (float db) const { const auto r = plot(); return r.getCentreY() - juce::jlimit (-12.0f, 12.0f, db) / 12.0f * r.getHeight() * 0.5f; }
     float valOf (float y) const { const auto r = plot(); return (r.getCentreY() - y) / (r.getHeight() * 0.5f) * 12.0f; }
     float u[10] {}, base[10] {}, t[10] {};
@@ -336,16 +692,24 @@ void styleSlider (juce::Slider& s, juce::Colour c)
 MainComponent::MainComponent (Controller& controller) : c (controller)
 {
     setLookAndFeel (&lnf);
+    logo = juce::ImageCache::getFromMemory (BinaryData::icon256_png, BinaryData::icon256_pngSize);
     power = std::make_unique<Switch>();
     levelSwitch = std::make_unique<Switch>();
     toneSwitch = std::make_unique<Switch>();
     modes = std::make_unique<ModeBar>();
+    spectrum = std::make_unique<Spectrum>();
+    spectrum->prime();
     graph = std::make_unique<LevelGraph>();
     eq = std::make_unique<EqEditor>();
-    for (juce::Component* comp : std::initializer_list<juce::Component*> { power.get(), levelSwitch.get(), toneSwitch.get(), modes.get(), graph.get(),
-                                                                            &volume, &fid, &bass, &surr, &amb, &resetSound, &bannerButton, &moreButton, &deviceBox })
+    deviceBox = std::make_unique<DeviceBox>();
+    for (juce::Component* comp : std::initializer_list<juce::Component*> { power.get(), levelSwitch.get(), toneSwitch.get(), modes.get(),
+                                                                            spectrum.get(), graph.get(), deviceBox.get(),
+                                                                            &volume, &fid, &bass, &surr, &amb, &resetSound, &bannerButton, &moreButton })
         addAndMakeVisible (comp);
     addChildComponent (eq.get());
+    resetSound.setMouseCursor (juce::MouseCursor::PointingHandCursor);
+    bannerButton.setMouseCursor (juce::MouseCursor::PointingHandCursor);
+    moreButton.setMouseCursor (juce::MouseCursor::PointingHandCursor);
 
     power->onClick = [this] { if (! syncing) c.setEnabled (power->getToggleState()); };
     levelSwitch->onClick = [this] { if (! syncing) c.setLeveler (levelSwitch->getToggleState()); };
@@ -365,9 +729,8 @@ MainComponent::MainComponent (Controller& controller) : c (controller)
     bannerButton.onClick = [this] { bannerAction(); };
     moreButton.setButtonText (L ("Ещё", "More"));
     moreButton.onClick = [this] { showMoreMenu(); };
-    deviceBox.onChange = [this]
+    deviceBox->onPick = [this] (int i)
     {
-        const int i = deviceBox.getSelectedItemIndex();
         if (! syncing && i >= 0 && i < deviceGuids.size()) c.selectDevice (deviceGuids[i]);
     };
     eq->onChange = [this] (int band, float delta)
@@ -379,9 +742,10 @@ MainComponent::MainComponent (Controller& controller) : c (controller)
     };
 
     c.addChangeListener (this);
-    setSize (452, preferredHeight());
+    kcCur = kindColour (c.now().kind);
+    setSize (kWidth, preferredHeight());
     syncFromController();
-    startTimerHz (12);
+    startTimerHz (30);
 }
 
 MainComponent::~MainComponent()
@@ -392,6 +756,7 @@ MainComponent::~MainComponent()
 
 MainComponent::Banner MainComponent::banner() const
 {
+    if (hideBanner) return Banner::None;
     if (! c.now().installed) return Banner::NotInstalled;
     if (c.now().fxSoundInChain) return Banner::FxSound;
     return Banner::None;
@@ -414,14 +779,16 @@ void MainComponent::syncFromController()
     bass.setValue (s.bass / 127.0, juce::dontSendNotification);
     surr.setValue (s.surround / 127.0, juce::dontSendNotification);
     amb.setValue (s.ambience / 127.0, juce::dontSendNotification);
-    for (auto* sl : { &fid, &bass, &surr, &amb }) sl->setColour (juce::Slider::trackColourId, kc);
     for (Switch* sw : { power.get(), levelSwitch.get(), toneSwitch.get() }) sw->snap();
+    for (auto* sl : { &fid, &bass, &surr, &amb }) sl->setColour (juce::Slider::trackColourId, kcCur);
+    toneSwitch->onColour = kcCur;
     const auto tw = c.tweaks (shownKind);
     eq->set (tw.eq, s.eq, st.tone, kc);
-    graph->set (st.history, targetLufsFor (c.volume()) + s.targetOffsetDb, c.leveler() && c.enabled());
+    spectrum->set (st.bands, st.bandPeaks, kcCur, c.enabled() && st.running);
+    graph->set (st.history, targetLufsFor (c.volume()) + s.targetOffsetDb, c.leveler() && c.enabled(), kcCur);
 
-    deviceBox.clear (juce::dontSendNotification);
     deviceGuids.clear();
+    juce::StringArray labels;
     int sel = -1;
     for (const auto& d : c.outputs())
     {
@@ -432,27 +799,29 @@ void MainComponent::syncFromController()
         juce::String label = d.name.c_str();
         if (! d.plugged) label += L ("  (спит)", "  (asleep)");
         else if (! d.rovnoInstalled) label += L ("  (не подключён)", "  (not connected)");
-        deviceBox.addItem (label, deviceGuids.size());
+        labels.add (label);
         if (juce::String (d.guid.c_str()) == c.deviceGuid()) sel = deviceGuids.size() - 1;
     }
-    if (sel >= 0) deviceBox.setSelectedItemIndex (sel, juce::dontSendNotification);
+    deviceBox->set (labels, sel);
 
     const auto b = banner();
     bannerButton.setVisible (b != Banner::None);
     bannerButton.setButtonText (b == Banner::NotInstalled ? L ("Подключить", "Connect") : L ("Переключить", "Switch"));
-    if (getHeight() != preferredHeight()) setSize (452, preferredHeight()); else resized();
+    if (getHeight() != preferredHeight()) setSize (kWidth, preferredHeight()); else resized();
     repaint();
 }
 
 int MainComponent::preferredHeight() const
 {
-    return 16 + 54 + 10 + (banner() != Banner::None ? 88 : 0) + 124 + 12 + 68 + 12 + 186 + 12 + 230 + 12 + (eqOpen ? 196 : 48) + 12 + 60 + 16;
+    return kTop + kHead + kGap + (banner() != Banner::None ? kBannerH + kGap : 0) + kRow1 + kGap + kRow2 + kGap
+           + (eqOpen ? kEqOpen : kEqClosed) + 10 + kFoot + kBottom;
 }
 
 void MainComponent::setEqOpen (bool open)
 {
     eqOpen = open;
-    setSize (452, preferredHeight());
+    eqAnim = open ? 1.0f : 0.0f;
+    setSize (kWidth, preferredHeight());
     resized();
     repaint();
 }
@@ -469,13 +838,33 @@ void MainComponent::soundChanged()
 
 void MainComponent::timerCallback()
 {
+    if (! isShowing()) return;
     const auto& st = c.now();
-    graph->set (st.history, targetLufsFor (c.volume()) + c.sound (st.kind).targetOffsetDb, c.leveler() && c.enabled());
+    bool needPaint = false;
+
+    // ease the accent toward the colour of the mode in use
+    const juce::Colour tc = kindColour (st.kind);
+    if (kcCur != tc)
+    {
+        kcCur = lerpColour (kcCur, tc, 0.16f);
+        if (std::abs ((int) kcCur.getRed() - (int) tc.getRed()) + std::abs ((int) kcCur.getGreen() - (int) tc.getGreen())
+            + std::abs ((int) kcCur.getBlue() - (int) tc.getBlue()) < 6) kcCur = tc;
+        for (auto* sl : { &fid, &bass, &surr, &amb }) sl->setColour (juce::Slider::trackColourId, kcCur);
+        toneSwitch->onColour = kcCur;
+        needPaint = true;
+    }
+    spectrum->set (st.bands, st.bandPeaks, kcCur, c.enabled() && st.running);
+    if (++graphTick % 6 == 0)
+        graph->set (st.history, targetLufsFor (c.volume()) + c.sound (st.kind).targetOffsetDb, c.leveler() && c.enabled(), kcCur);
     if (st.kind != shownKind) syncFromController();
     static juce::String lastNow;
     const juce::String nowKey = st.title + st.artist + whyText() + toneText() + (st.running ? "1" : "0");
-    if (nowKey != lastNow) { lastNow = nowKey; repaint(); }
-    if (eqOpen) eq->set (c.tweaks (shownKind).eq, c.sound (shownKind).eq, st.tone, kindColour (shownKind));
+    if (nowKey != lastNow) { lastNow = nowKey; needPaint = true; }
+    if (eqOpen) eq->set (c.tweaks (shownKind).eq, c.sound (shownKind).eq, st.tone, kcCur);
+    const float eqTarget = eqOpen ? 1.0f : 0.0f;
+    if (std::abs (eqTarget - eqAnim) > 0.01f) { eqAnim += (eqTarget - eqAnim) * 0.35f; needPaint = true; }
+    else eqAnim = eqTarget;
+    if (needPaint) repaint();
 }
 
 juce::String MainComponent::whyText() const
@@ -519,183 +908,270 @@ void MainComponent::paint (juce::Graphics& g)
 {
     g.fillAll (col::bg);
     const auto& st = c.now();
-    const juce::Colour kc = kindColour (st.kind);
+    const juce::Colour kc = kcCur;
 
-    // header
+    // The mood of the current mode as a soft glow behind the header, plus a faint one low on the right.
+    g.setGradientFill (juce::ColourGradient (kc.withAlpha (0.16f), 150.0f, -40.0f, kc.withAlpha (0.0f), 150.0f + 620.0f, 520.0f, true));
+    g.fillRect (getLocalBounds());
+    g.setGradientFill (juce::ColourGradient (col::accent2.withAlpha (0.06f), (float) getWidth(), (float) getHeight(),
+                                             col::accent2.withAlpha (0.0f), (float) getWidth() - 560.0f, (float) getHeight() - 240.0f, true));
+    g.fillRect (getLocalBounds());
+
+    // header: mark, name, status
+    const auto lg = juce::Rectangle<float> ((float) headerR.getX(), (float) headerR.getY() + 6.0f, 52.0f, 52.0f);
+    if (logo.isValid()) g.drawImage (logo, lg, juce::RectanglePlacement::centred);
     g.setColour (col::text);
-    g.setFont (font (27.0f, 700));
-    g.drawText (L ("Ровно", "Rovno"), headerR.withHeight (34), juce::Justification::centredLeft);
+    g.setFont (font (30.0f, 700));
+    g.drawText (L ("Ровно", "Rovno"), juce::Rectangle<int> (headerR.getX() + 66, headerR.getY() + 2, 220, 36), juce::Justification::centredLeft);
     const bool working = c.enabled() && st.installed && st.running;
     const juce::Colour dot = ! c.enabled() ? col::faint : (working ? col::ok : col::warn);
+    const float dotY = (float) headerR.getY() + 51.0f;
+    if (working)
+    {
+        g.setColour (dot.withAlpha (0.25f));
+        g.fillEllipse ((float) headerR.getX() + 66.0f, dotY - 5.0f, 14.0f, 14.0f);
+    }
     g.setColour (dot);
-    g.fillEllipse ((float) headerR.getX() + 1.0f, (float) headerR.getY() + 41.0f, 7.0f, 7.0f);
+    g.fillEllipse ((float) headerR.getX() + 69.0f, dotY - 2.0f, 8.0f, 8.0f);
     g.setColour (col::dim);
-    g.setFont (font (13.0f, 500));
+    g.setFont (font (15.0f, 500));
     const juce::String status = ! c.enabled() ? L ("выключено", "off")
                               : ! st.installed ? L ("не подключено к выходу", "not connected to the output")
                               : ! st.running ? L ("ждёт звука", "waiting for sound")
                               : L ("работает", "working");
-    g.drawText (status + "  ·  " + st.deviceName, headerR.withTrimmedTop (34).withTrimmedLeft (14).withTrimmedRight (70), juce::Justification::centredLeft, true);
+    g.drawText (status, juce::Rectangle<int> (headerR.getX() + 88, headerR.getY() + 40, 240, 22), juce::Justification::centredLeft, true);
 
     // banner
     if (banner() != Banner::None)
     {
-        drawCard (g, bannerR.toFloat(), col::warn.withAlpha (0.10f).overlaidWith (col::card.withAlpha (0.85f)));
+        drawCard (g, bannerR.toFloat(), col::warn.withAlpha (0.12f).overlaidWith (col::card.withAlpha (0.88f)), 18.0f);
         g.setColour (col::warn);
-        g.setFont (font (13.5f, 600));
+        g.fillRoundedRectangle (juce::Rectangle<float> ((float) bannerR.getX() + 18.0f, (float) bannerR.getCentreY() - 10.0f, 4.0f, 20.0f), 2.0f);
+        g.setFont (font (15.0f, 500));
         const auto text = banner() == Banner::NotInstalled
             ? L ("«Ровно» ещё не подключён к этому выходу. Windows спросит разрешение, звук пропадёт на секунду.",
                  "Rovno is not connected to this output yet. Windows will ask for permission; sound stops for a second.")
             : L ("Звук сейчас идёт через FxSound, обработка будет двойной. Переключить вывод на этот выход?",
                  "Sound goes through FxSound now, so it would be processed twice. Switch the output to this device?");
-        g.drawFittedText (text, bannerR.reduced (16, 10).withTrimmedRight (122), juce::Justification::centredLeft, 3);
+        g.drawFittedText (text, bannerR.reduced (40, 8).withTrimmedRight (150), juce::Justification::centredLeft, 2);
     }
 
     // now playing
     drawCard (g, nowR.toFloat());
-    auto nr = nowR.reduced (16, 14);
-    auto badge = nr.removeFromLeft (52).withHeight (52).toFloat();
-    g.setColour (kc.withAlpha (0.16f));
-    g.fillRoundedRectangle (badge, 14.0f);
-    drawKindIcon (g, st.kind, badge.reduced (13.0f), kc, 2.0f);
-    nr.removeFromLeft (14);
+    auto nr = nowR.reduced (20, 18);
+    auto badge = nr.removeFromLeft (76).withHeight (76).toFloat();
+    {
+        juce::Path bp;
+        bp.addRoundedRectangle (badge, 20.0f);
+        juce::DropShadow (kc.withAlpha (0.30f), 14, { 0, 2 }).drawForPath (g, bp);
+        g.setGradientFill (juce::ColourGradient (kc.withAlpha (0.34f), badge.getX(), badge.getY(), kc.withAlpha (0.12f), badge.getRight(), badge.getBottom(), false));
+        g.fillPath (bp);
+        g.setColour (kc.withAlpha (0.45f));
+        g.strokePath (bp, juce::PathStrokeType (1.0f));
+        drawKindIcon (g, st.kind, badge.reduced (19.0f), kc.brighter (0.2f), 2.4f);
+    }
+    nr.removeFromLeft (18);
     g.setColour (col::text);
-    g.setFont (font (15.5f, 600));
+    g.setFont (font (19.0f, 600));
     const bool unnamed = st.title.isEmpty() && st.app.isEmpty();
     const bool sounding = st.running && st.inLufs > -50;
     const bool nothing = unnamed && ! sounding;
     const juce::String title = ! unnamed ? (st.title.isNotEmpty() ? st.title : L ("Звук без названия", "Untitled sound"))
                              : sounding ? L ("Звук без названия", "Untitled sound")
                                         : L ("Сейчас ничего не играет", "Nothing is playing");
-    g.drawFittedText (title, nr.removeFromTop (40), juce::Justification::topLeft, 2, 0.95f);
+    g.drawFittedText (title, nr.removeFromTop (28), juce::Justification::centredLeft, 1, 0.9f);
     g.setColour (col::dim);
-    g.setFont (font (13.0f));
+    g.setFont (font (15.0f));
     juce::String sub = st.artist;
     if (st.app.isNotEmpty()) sub = sub.isNotEmpty() ? sub + "  ·  " + st.app : st.app;
     if (nothing) sub = L ("Включите видео или музыку: режим подберётся сам", "Play a video or music: the mode picks itself");
-    else if (unnamed) sub = L ("программа не сообщила название, режим выбирается по звуку", "the app gave no title; the mode follows the sound");
-    g.drawText (sub, nr.removeFromTop (18), juce::Justification::centredLeft, true);
-    nr.removeFromTop (8);
-    auto chip = nr.removeFromTop (24);
+    else if (unnamed) sub = L ("программа не сообщила название, режим по звуку", "no title from the app; the mode follows the sound");
+    g.drawText (sub, nr.removeFromTop (24), juce::Justification::centredLeft, true);
+    nr.removeFromTop (14);
+    auto chip = nr.removeFromTop (30);
     const juce::String kn = kindName (st.kind);
-    g.setFont (font (12.0f, 600));
-    const int cw = juce::GlyphArrangement::getStringWidthInt (g.getCurrentFont(), kn) + 20;
+    g.setFont (font (14.0f, 600));
+    const int cw = juce::GlyphArrangement::getStringWidthInt (g.getCurrentFont(), kn) + 28;
     auto chipR = chip.removeFromLeft (cw).toFloat();
-    g.setColour (kc.withAlpha (0.18f));
-    g.fillRoundedRectangle (chipR, 12.0f);
-    g.setColour (kc);
+    g.setColour (kc.withAlpha (0.20f));
+    g.fillRoundedRectangle (chipR, 15.0f);
+    g.setColour (kc.brighter (0.25f));
     g.drawText (kn, chipR, juce::Justification::centred);
     g.setColour (col::dim);
-    g.setFont (font (12.5f));
-    g.drawText (whyText(), chip.withTrimmedLeft (10), juce::Justification::centredLeft, true);
+    g.setFont (font (14.0f));
+    g.drawText (whyText(), chip.withTrimmedLeft (12), juce::Justification::centredLeft, true);
 
     // loudness
     drawCard (g, loudR.toFloat());
-    auto lr = loudR.reduced (18, 14);
+    auto lr = loudR.reduced (24, 18);
+    g.setColour (col::text);
+    g.setFont (font (19.0f, 600));
+    g.drawText (L ("Ровная громкость", "Even loudness"), lr.removeFromTop (28).withTrimmedRight (70), juce::Justification::centredLeft);
+    // legend of the two lines under the chart, and what the bars are
+    g.setColour (col::dim);
+    g.setFont (font (14.0f));
+    {
+        auto leg = lr.removeFromTop (24);
+        g.drawText (st.running ? L ("частоты на входе  ·  внизу — громкость за 90 секунд", "input by frequency  ·  below: loudness over 90 seconds")
+                               : L ("всё оживёт, когда пойдёт звук", "it all comes alive with sound"),
+                    leg, juce::Justification::centredLeft, true);
+    }
+    // two-line legend sits at the right of the graph's top edge
+    {
+        const int gy = graph->getY() - 6;
+        const bool on = c.leveler() && c.enabled();
+        g.setFont (font (13.0f, 500));
+        const auto t1 = L ("как пришло", "as it came"), t2 = L ("как звучит", "as you hear it");
+        const int w2 = juce::GlyphArrangement::getStringWidthInt (g.getCurrentFont(), t2), w1 = juce::GlyphArrangement::getStringWidthInt (g.getCurrentFont(), t1);
+        int x = loudR.getRight() - 24 - w2;
+        g.setColour (col::dim);
+        g.drawText (t2, x, gy - 18, w2, 18, juce::Justification::centredRight);
+        g.setColour (on ? kc : col::dim);
+        g.fillRoundedRectangle ((float) x - 24.0f, (float) gy - 10.0f, 16.0f, 3.0f, 1.5f);
+        x -= 24 + 20 + w1;
+        g.setColour (col::dim);
+        g.drawText (t1, x, gy - 18, w1, 18, juce::Justification::centredRight);
+        g.setColour (col::dim.withAlpha (0.6f));
+        g.fillRoundedRectangle ((float) x - 24.0f, (float) gy - 9.5f, 16.0f, 2.0f, 1.0f);
+    }
+    auto volRow = loudR.reduced (24, 0).withTop (volume.getY()).withHeight (volume.getHeight());
+    g.setColour (col::dim);
+    g.setFont (font (15.0f, 500));
+    g.drawText (L ("Громкость", "Volume"), volRow.removeFromLeft (100), juce::Justification::centredLeft);
     g.setColour (col::text);
     g.setFont (font (15.0f, 600));
-    g.drawText (L ("Ровная громкость", "Even loudness"), lr.removeFromTop (24), juce::Justification::centredLeft);
-    g.setColour (col::dim);
-    g.setFont (font (12.5f));
-    g.drawText (st.running ? L ("тонкая линия — как пришло, яркая — как звучит", "thin line: as it came, bright: as you hear it")
-                           : L ("график оживёт, когда пойдёт звук", "the graph comes alive with sound"),
-                lr.removeFromTop (18), juce::Justification::centredLeft, true);
-    auto volRow = loudR.reduced (18, 14).removeFromBottom (24);
-    g.setColour (col::dim);
-    g.setFont (font (13.0f, 500));
-    g.drawText (L ("Громкость", "Volume"), volRow.removeFromLeft (84), juce::Justification::centredLeft);
-    g.drawText (juce::String (juce::roundToInt (c.volume() * 100)) + "%", volRow.removeFromRight (40), juce::Justification::centredRight);
+    g.drawText (juce::String (juce::roundToInt (c.volume() * 100)) + "%", volRow.removeFromRight (52), juce::Justification::centredRight);
 
     // sound
     drawCard (g, soundR.toFloat());
-    auto sr = soundR.reduced (18, 14);
+    auto sr = soundR.reduced (24, 18);
     g.setColour (col::text);
-    g.setFont (font (15.0f, 600));
-    g.drawText (L ("Звук: ", "Sound: ") + kindName (shownKind), sr.removeFromTop (24), juce::Justification::centredLeft);
-    sr.removeFromTop (8);
+    g.setFont (font (19.0f, 600));
+    g.drawText (L ("Звук: ", "Sound: ") + kindName (shownKind), sr.removeFromTop (28).withTrimmedRight (110), juce::Justification::centredLeft);
     const char* namesRu[4] = { "Чёткость", "Бас", "Объём", "Атмосфера" };
     const char* namesEn[4] = { "Clarity", "Bass", "Width", "Ambience" };
     juce::Slider* sliders[4] = { &fid, &bass, &surr, &amb };
     for (int i = 0; i < 4; ++i)
     {
-        auto row = sr.removeFromTop (30);
+        auto row = juce::Rectangle<int> (soundR.getX() + 24, sliders[i]->getY(), soundR.getWidth() - 48, sliders[i]->getHeight());
         g.setColour (col::dim);
-        g.setFont (font (13.0f, 500));
-        g.drawText (L (namesRu[i], namesEn[i]), row.removeFromLeft (92), juce::Justification::centredLeft);
-        g.drawText (juce::String (juce::roundToInt (sliders[i]->getValue() * 100)) + "%", row.removeFromRight (40), juce::Justification::centredRight);
+        g.setFont (font (15.0f, 500));
+        g.drawText (L (namesRu[i], namesEn[i]), row.removeFromLeft (104), juce::Justification::centredLeft);
+        g.setColour (col::text);
+        g.setFont (font (15.0f, 600));
+        g.drawText (juce::String (juce::roundToInt (sliders[i]->getValue() * 100)) + "%", row.removeFromRight (52), juce::Justification::centredRight);
     }
-    sr.removeFromTop (8);
-    auto toneRow = sr.removeFromTop (22);
+    g.setColour (juce::Colours::white.withAlpha (0.07f));
+    g.fillRect (soundR.getX() + 24, toneSwitch->getY() - 14, soundR.getWidth() - 48, 1);
     g.setColour (col::text);
-    g.setFont (font (13.5f, 500));
-    g.drawText (L ("Подстраивать тон под запись", "Fix the tone of each recording"), toneRow.withTrimmedRight (56), juce::Justification::centredLeft);
+    g.setFont (font (15.5f, 600));
+    g.drawText (L ("Подстраивать тон под запись", "Fix the tone of each recording"),
+                juce::Rectangle<int> (soundR.getX() + 24, toneSwitch->getY(), soundR.getWidth() - 48 - 64, toneSwitch->getHeight()), juce::Justification::centredLeft, true);
     g.setColour (col::dim);
-    g.setFont (font (12.5f));
-    g.drawText (toneText(), sr.removeFromTop (20), juce::Justification::centredLeft, true);
+    g.setFont (font (14.0f));
+    g.drawFittedText (toneText(), juce::Rectangle<int> (soundR.getX() + 24, toneSwitch->getBottom() + 4, soundR.getWidth() - 48, 44), juce::Justification::topLeft, 2);
 
     // EQ
-    drawCard (g, eqR.toFloat());
+    drawCard (g, eqR.toFloat(), eqHover ? col::card.brighter (0.05f) : col::card);
     g.setColour (col::text);
-    g.setFont (font (15.0f, 600));
-    g.drawText (L ("Эквалайзер", "Equalizer"), eqHeadR.reduced (18, 0), juce::Justification::centredLeft);
+    g.setFont (font (19.0f, 600));
+    g.drawText (L ("Эквалайзер", "Equalizer"), eqHeadR.reduced (24, 0), juce::Justification::centredLeft);
     g.setColour (col::dim);
-    g.setFont (font (12.5f));
-    g.drawText (eqOpen ? L ("свернуть", "hide") : L ("показать", "show"), eqHeadR.reduced (18, 0), juce::Justification::centredRight);
+    g.setFont (font (14.0f));
+    g.drawText (eqOpen ? L ("перетаскивайте точки · двойной щелчок — сброс точки", "drag the points · double-click resets a point")
+                       : L ("10 полос, правка вручную", "10 bands, by hand"),
+                eqHeadR.reduced (24, 0).withTrimmedLeft (140).withTrimmedRight (40), juce::Justification::centredRight);
+    {
+        const float cx = (float) eqHeadR.getRight() - 30.0f, cy = (float) eqHeadR.getCentreY();
+        juce::Path ch;
+        ch.startNewSubPath (-6, 3); ch.lineTo (0, -3); ch.lineTo (6, 3);   // points up = open
+        const float turn = (1.0f - easeOut (eqAnim)) * juce::MathConstants<float>::pi;
+        g.setColour (eqHover ? col::text : col::dim);
+        g.strokePath (ch, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded),
+                      juce::AffineTransform::rotation (turn).translated (cx, cy));
+    }
 
     // footer
     g.setColour (col::faint);
-    g.setFont (font (12.0f));
-    g.drawText (L ("Ctrl + Alt + ` — быстро сменить режим", "Ctrl + Alt + ` switches the mode"), footR.withTrimmedTop (36), juce::Justification::centred);
+    g.setFont (font (13.5f));
+    g.drawText (L ("Ctrl + Alt + ` — быстро сменить режим из любого окна", "Ctrl + Alt + ` switches the mode from any window"), footR, juce::Justification::centred);
 }
 
 void MainComponent::resized()
 {
-    auto r = getLocalBounds().reduced (18, 16);
-    headerR = r.removeFromTop (54);
-    power->setBounds (headerR.getRight() - 56, headerR.getY() + 6, 52, 30);
-    r.removeFromTop (10);
+    auto r = getLocalBounds().withTrimmedTop (kTop).withTrimmedBottom (kBottom).reduced (kPad, 0);
+    headerR = r.removeFromTop (kHead);
+    {
+        // right side of the header: output, more, power
+        auto hr = headerR;
+        power->setBounds (hr.removeFromRight (62).withSizeKeepingCentre (62, 38));
+        hr.removeFromRight (10);
+        moreButton.setBounds (hr.removeFromRight (84).withSizeKeepingCentre (84, 44));
+        hr.removeFromRight (10);
+        deviceBox->setBounds (hr.removeFromRight (340).withSizeKeepingCentre (340, 44));
+    }
+    r.removeFromTop (kGap);
     bannerR = {};
     if (banner() != Banner::None)
     {
-        bannerR = r.removeFromTop (78);
-        bannerButton.setBounds (bannerR.getRight() - 124, bannerR.getCentreY() - 17, 110, 34);
-        r.removeFromTop (10);
+        bannerR = r.removeFromTop (kBannerH);
+        bannerButton.setBounds (bannerR.getRight() - 150, bannerR.getCentreY() - 21, 134, 42);
+        r.removeFromTop (kGap);
     }
-    nowR = r.removeFromTop (124);
-    r.removeFromTop (12);
-    modesR = r.removeFromTop (68);
+    auto row1 = r.removeFromTop (kRow1);
+    nowR = row1.removeFromLeft (560);
+    row1.removeFromLeft (kGap - 8);
+    modesR = row1.withTrimmedLeft (8);
     modes->setBounds (modesR);
-    r.removeFromTop (12);
-    loudR = r.removeFromTop (186);
-    levelSwitch->setBounds (loudR.getRight() - 18 - 46, loudR.getY() + 15, 46, 26);
-    graph->setBounds (loudR.reduced (18, 0).withTop (loudR.getY() + 62).withHeight (78));
-    volume.setBounds (loudR.reduced (18, 14).removeFromBottom (24).withTrimmedLeft (90).withTrimmedRight (48));
-    r.removeFromTop (12);
-    soundR = r.removeFromTop (230);
-    resetSound.setBounds (soundR.getRight() - 18 - 92, soundR.getY() + 12, 92, 28);
+    r.removeFromTop (kGap);
+
+    auto row2 = r.removeFromTop (kRow2);
+    loudR = row2.removeFromLeft (640);
+    row2.removeFromLeft (kGap);
+    soundR = row2;
+    levelSwitch->setBounds (juce::Rectangle<int> (loudR.getRight() - 24 - 56, loudR.getY() + 16, 56, 34));
+    spectrum->setBounds (loudR.getX() + 24, loudR.getY() + 76, loudR.getWidth() - 48, 138);
+    graph->setBounds (loudR.getX() + 24, loudR.getY() + 242, loudR.getWidth() - 48, 108);
+    volume.setBounds (loudR.getX() + 24 + 100, loudR.getBottom() - 18 - 36, loudR.getWidth() - 48 - 100 - 56, 36);
+
+    resetSound.setBounds (soundR.getRight() - 24 - 104, soundR.getY() + 15, 104, 34);
     {
-        auto sr = soundR.reduced (18, 14).withTrimmedTop (32);
+        int y = soundR.getY() + 66;
         for (auto* s : { &fid, &bass, &surr, &amb })
-            s->setBounds (sr.removeFromTop (30).withTrimmedLeft (98).withTrimmedRight (48));
-        sr.removeFromTop (8);
-        toneSwitch->setBounds (sr.getRight() - 46, sr.getY() - 2, 46, 26);
+        {
+            s->setBounds (soundR.getX() + 24 + 104, y, soundR.getWidth() - 48 - 104 - 56, 40);
+            y += 50;
+        }
+        toneSwitch->setBounds (soundR.getRight() - 24 - 56, y + 20, 56, 34);
     }
-    r.removeFromTop (12);
-    eqR = r.removeFromTop (eqOpen ? 196 : 48);
-    eqHeadR = eqR.withHeight (48);
+    r.removeFromTop (kGap);
+    eqR = r.removeFromTop (eqOpen ? kEqOpen : kEqClosed);
+    eqHeadR = eqR.withHeight (kEqClosed);
     eq->setVisible (eqOpen);
-    if (eqOpen) eq->setBounds (eqR.withTrimmedTop (44).reduced (8, 8));
-    r.removeFromTop (12);
-    footR = r.removeFromTop (60);
-    auto fr = footR.withHeight (34);
-    moreButton.setBounds (fr.removeFromRight (78));
-    fr.removeFromRight (10);
-    deviceBox.setBounds (fr);
+    if (eqOpen) eq->setBounds (eqR.withTrimmedTop (kEqClosed - 4).reduced (16, 10));
+    r.removeFromTop (10);
+    footR = r.removeFromTop (kFoot);
 }
 
 void MainComponent::mouseUp (const juce::MouseEvent& e)
 {
     if (eqHeadR.contains (e.getPosition())) setEqOpen (! eqOpen);
+}
+
+void MainComponent::mouseMove (const juce::MouseEvent& e)
+{
+    const bool h = eqHeadR.contains (e.getPosition());
+    if (h != eqHover)
+    {
+        eqHover = h;
+        setMouseCursor (h ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
+        repaint (eqR);
+    }
+}
+
+void MainComponent::mouseExit (const juce::MouseEvent&)
+{
+    if (eqHover) { eqHover = false; setMouseCursor (juce::MouseCursor::NormalCursor); repaint (eqR); }
 }
 
 void MainComponent::bannerAction()
@@ -709,10 +1185,7 @@ void MainComponent::bannerAction()
     }
     else if (banner() == Banner::FxSound)
     {
-        c.switchDefaultToDevice();
-        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, L ("Готово", "Done"),
-            L ("Звук теперь идёт прямо на этот выход через «Ровно». FxSound можно закрыть: в трее, правой кнопкой по значку → Exit.",
-               "Sound now goes straight to this output through Rovno. You can close FxSound: tray icon, right click, Exit."));
+        c.switchDefaultToDevice();   // no "done" box: the banner simply goes away
     }
     syncFromController();
 }
@@ -721,17 +1194,38 @@ void MainComponent::showMoreMenu()
 {
     juce::PopupMenu m;
     m.setLookAndFeel (&lnf);
-    m.addItem (1, L ("Не давать выходу засыпать (HDMI, DisplayPort)", "Keep the output awake (HDMI, DisplayPort)"), true, c.keepAwake());
+    // Show what the keep-awake is actually doing: when it cannot hold the output, the first sound
+    // after a pause is swallowed and there is nothing in the window to explain why.
+    const auto& ks = c.now();
+    juce::String keepText = L ("Не давать выходу засыпать", "Keep the output awake");
+    if (c.keepAwake())
+        switch (ks.keepStatus)
+        {
+            case KeepAlive::Status::Holding: keepText += L ("  ·  держит", "  ·  holding"); break;
+            case KeepAlive::Status::Waiting: keepText += L ("  ·  выход недоступен, жду", "  ·  output unavailable, waiting"); break;
+            case KeepAlive::Status::Failed:  keepText += L ("  ·  не вышло", "  ·  failed") + juce::String (" (") + ks.keepStep
+                                                       + " 0x" + juce::String::toHexString ((int) ks.keepError) + ")"; break;
+            default: break;
+        }
+    m.addItem (1, keepText, true, c.keepAwake());
     m.addItem (2, L ("Громкость как в FxSound (без выравнивания)", "FxSound-style loudness (no leveling)"), true, c.fxSoundLoudness());
+    m.addSeparator();
+    juce::PopupMenu scale;
+    scale.setLookAndFeel (&lnf);
+    scale.addItem (20, L ("Авто (по размеру монитора)", "Automatic (by monitor size)"));
+    for (int p : { 100, 125, 150, 175, 200 }) scale.addItem (p, juce::String (p) + " %");
+    m.addSubMenu (L ("Размер окна", "Window size"), scale);
     m.addSeparator();
     m.addItem (3, L ("Забыть, что программа выучила", "Forget what the app has learned"));
     m.addItem (4, L ("Отключить «Ровно» от этого выхода", "Disconnect Rovno from this output"), c.now().installed);
-    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (moreButton), [this] (int r)
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (moreButton).withMinimumWidth (300), [this] (int r)
     {
         if (r == 1) c.setKeepAwake (! c.keepAwake());
         else if (r == 2) c.setFxSoundLoudness (! c.fxSoundLoudness());
         else if (r == 3) c.forgetLearned();
         else if (r == 4) { juce::String err; c.installOnDevice (false, err); }
+        else if (r == 20 && onScale) onScale (0);
+        else if (r >= 100 && r <= 200 && onScale) onScale (r);
         syncFromController();
     });
 }

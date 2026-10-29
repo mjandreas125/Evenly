@@ -5,19 +5,39 @@
 #include <atomic>
 #include <string>
 #include <thread>
+#include <windows.h>
 
 namespace rv
 {
 class KeepAlive
 {
 public:
+    enum class Status
+    {
+        Off,        // not asked to run
+        Holding,    // the silent stream is open: the output stays awake
+        Waiting,    // the output is not there right now (monitor asleep); trying again
+        Failed      // Windows refuses to open the stream; see error()
+    };
+
     ~KeepAlive() { stop(); }
-    void start (const std::wstring& endpointGuid);
+    // endpointId is the full id as Windows spells it ("{0.0.0.00000000}.{guid}"), from
+    // devices::endpointId(). An id in the wrong case makes Windows fail with DEVICE_IN_USE.
+    void start (const std::wstring& endpointId);
     void stop();
-    bool running() const { return active.load(); }
+    bool running() const { return state.load() == Status::Holding; }
+    Status status() const { return state.load(); }
+    long error() const { return lastHr.load(); }        // HRESULT of the call that failed
+    const char* failedAt() const { return lastStep.load(); }
+
 private:
-    void run (std::wstring guid);
+    void run (std::wstring id);
+    bool sleepOrQuit (int ms);                           // false once stop() was asked for
+
     std::thread worker;
-    std::atomic<bool> quit { false }, active { false };
+    HANDLE quitEvent = nullptr;
+    std::atomic<Status> state { Status::Off };
+    std::atomic<long> lastHr { 0 };
+    std::atomic<const char*> lastStep { "" };
 };
 } // namespace rv

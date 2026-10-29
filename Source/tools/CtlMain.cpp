@@ -52,6 +52,14 @@ const wchar_t* kApoClsid = L"{F9DCA572-B13F-43A6-B8EE-113925372DDC}";
 const wchar_t* kBackup = L"SOFTWARE\\Rovno\\Devices";
 const wchar_t* kNone = L"<none>";
 
+// The id WASAPI expects. Windows spells the guid in lower case and matches the string as it is,
+// so an id built from an upper-case guid is refused (DEVICE_IN_USE) once the output is in use.
+std::wstring endpointId (std::wstring guid)
+{
+    for (auto& c : guid) c = (wchar_t) towlower (c);
+    return L"{0.0.0.00000000}." + guid;
+}
+
 std::wstring readString (HKEY root, const std::wstring& path, const wchar_t* name, bool* exists = nullptr)
 {
     wchar_t buf[1024] {};
@@ -211,7 +219,7 @@ int policyWrite (const std::wstring& ep, const std::wstring& clsid)
     IPolicyConfig* pc = nullptr;
     HRESULT hr = CoCreateInstance (kPolicyConfigClient, nullptr, CLSCTX_ALL, __uuidof (IPolicyConfig), (void**) &pc);
     if (FAILED (hr)) { std::printf ("policy config unavailable (0x%08lx)\n", hr); return 6; }
-    const std::wstring id = L"{0.0.0.00000000}." + ep;
+    const std::wstring id = endpointId (ep);
     PROPVARIANT v;
     PropVariantInit (&v);
     if (! clsid.empty())
@@ -252,7 +260,7 @@ int volume (const std::wstring& ep, double value)
     IMMDevice* dev = nullptr;
     IAudioEndpointVolume* vol = nullptr;
     HRESULT hr = CoCreateInstance (__uuidof (MMDeviceEnumerator), nullptr, CLSCTX_ALL, __uuidof (IMMDeviceEnumerator), (void**) &en);
-    if (SUCCEEDED (hr)) hr = en->GetDevice ((L"{0.0.0.00000000}." + ep).c_str(), &dev);
+    if (SUCCEEDED (hr)) hr = en->GetDevice (endpointId (ep).c_str(), &dev);
     if (SUCCEEDED (hr)) hr = dev->Activate (__uuidof (IAudioEndpointVolume), CLSCTX_ALL, nullptr, (void**) &vol);
     if (FAILED (hr)) { std::printf ("cannot open the device volume (0x%08lx)\n", hr); return 8; }
     if (value >= 0 && value <= 1) vol->SetMasterVolumeLevelScalar ((float) value, nullptr);

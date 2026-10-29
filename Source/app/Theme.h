@@ -9,8 +9,8 @@ namespace rv::ui
 {
 namespace col
 {
-const juce::Colour bg { 0xff101216 }, card { 0xff181b21 }, cardHi { 0xff20242c }, line { 0xff292e37 };
-const juce::Colour text { 0xffedf0f4 }, dim { 0xff9098a6 }, faint { 0xff5c6370 };
+const juce::Colour bg { 0xff0c0e12 }, card { 0xff14171d }, cardHi { 0xff1d2129 }, line { 0xff2a2f3a };
+const juce::Colour text { 0xfff4f6f9 }, dim { 0xffb0b7c4 }, faint { 0xff7b8391 };
 const juce::Colour accent { 0xffffa14d }, accent2 { 0xffff6846 }, ok { 0xff46d08b }, warn { 0xffffc457 };
 } // namespace col
 
@@ -138,11 +138,15 @@ inline void drawKindIcon (juce::Graphics& g, Kind k, juce::Rectangle<float> r, j
     }
 }
 
-inline void drawCard (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour fill = col::card)
+// A panel: a faint vertical sheen, a hairline that is lighter on top (light falls from above).
+inline void drawCard (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour fill = col::card, float radius = 20.0f)
 {
-    g.setColour (fill);
-    g.fillRoundedRectangle (r, 16.0f);
-    g.setColour (col::line);
-    g.drawRoundedRectangle (r.reduced (0.5f), 16.0f, 1.0f);
+    g.setGradientFill (juce::ColourGradient (fill.brighter (0.07f), 0, r.getY(), fill, 0, r.getBottom(), false));
+    g.fillRoundedRectangle (r, radius);
+    g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.10f), 0, r.getY(),
+                                             juce::Colours::white.withAlpha (0.03f), 0, r.getBottom(), false));
+    g.drawRoundedRectangle (r.reduced (0.5f), radius, 1.0f);
 }
+
+inline float easeOut (float t) { t = juce::jlimit (0.0f, 1.0f, t); return 1.0f - (1.0f - t) * (1.0f - t) * (1.0f - t); }
 } // namespace rv::ui

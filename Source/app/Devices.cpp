@@ -52,10 +52,39 @@ std::wstring guidOf (const std::wstring& id)   // "{0.0.0.00000000}.{guid}" -> "
 }
 
 std::wstring upper (std::wstring s) { for (auto& c : s) c = (wchar_t) towupper (c); return s; }
+std::wstring lowerStr (std::wstring s) { for (auto& c : s) c = (wchar_t) towlower (c); return s; }
 } // namespace
 
 namespace devices
 {
+// Ask Windows itself how it spells this endpoint; fall back to the lower-case form it always uses.
+std::wstring endpointId (const std::wstring& guid)
+{
+    std::wstring out;
+    IMMDeviceEnumerator* en = nullptr;
+    IMMDeviceCollection* col = nullptr;
+    if (SUCCEEDED (CoCreateInstance (__uuidof (MMDeviceEnumerator), nullptr, CLSCTX_ALL, __uuidof (IMMDeviceEnumerator), (void**) &en))
+        && SUCCEEDED (en->EnumAudioEndpoints (eRender, DEVICE_STATEMASK_ALL, &col)))
+    {
+        UINT n = 0;
+        col->GetCount (&n);
+        for (UINT i = 0; i < n && out.empty(); ++i)
+        {
+            IMMDevice* dev = nullptr;
+            LPWSTR id = nullptr;
+            if (SUCCEEDED (col->Item (i, &dev)) && SUCCEEDED (dev->GetId (&id)))
+            {
+                if (_wcsicmp (guidOf (id).c_str(), guid.c_str()) == 0) out = id;
+                CoTaskMemFree (id);
+            }
+            if (dev) dev->Release();
+        }
+        col->Release();
+    }
+    if (en) en->Release();
+    return out.empty() ? L"{0.0.0.00000000}." + lowerStr (guid) : out;
+}
+
 std::wstring defaultGuid()
 {
     std::wstring out;
@@ -91,7 +120,8 @@ std::vector<OutputDevice> list()
             LPWSTR id = nullptr;
             if (FAILED (col->Item (i, &dev)) || FAILED (dev->GetId (&id))) { if (dev) dev->Release(); continue; }
             OutputDevice d;
-            d.guid = upper (guidOf (id));
+            d.id = id;                      // exactly as Windows spells it: WASAPI compares the string
+            d.guid = upper (guidOf (id));   // upper case for the registry keys and the settings file
             CoTaskMemFree (id);
             if (SUCCEEDED (dev->OpenPropertyStore (STGM_READ, &props)))
             {
@@ -129,7 +159,7 @@ bool setDefault (const std::wstring& guid)
 {
     IPolicyConfig* pc = nullptr;
     if (FAILED (CoCreateInstance (kPolicyConfigClient, nullptr, CLSCTX_ALL, __uuidof (IPolicyConfig), (void**) &pc))) return false;
-    const std::wstring id = L"{0.0.0.00000000}." + guid;
+    const std::wstring id = endpointId (guid);
     bool ok = true;
     for (ERole r : { eConsole, eMultimedia, eCommunications }) ok &= SUCCEEDED (pc->SetDefaultEndpoint (id.c_str(), r));
     pc->Release();
