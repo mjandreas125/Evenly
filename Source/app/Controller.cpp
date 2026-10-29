@@ -136,7 +136,7 @@ void Controller::load()
         levelerOn = o->hasProperty ("leveler") ? (bool) o->getProperty ("leveler") : true;
         fxLoud = (bool) o->getProperty ("fxsoundLoudness");
         toneOn = o->hasProperty ("toneAuto") ? (bool) o->getProperty ("toneAuto") : true;
-        keepOn = o->hasProperty ("keepAwake") ? (bool) o->getProperty ("keepAwake") : true;
+        keepOn = o->hasProperty ("keepAwake") ? (bool) o->getProperty ("keepAwake") : false;   // off: it makes the monitor hiss
         manual = o->hasProperty ("manual") ? (Kind) (int) o->getProperty ("manual") : Kind::Unknown;
         device = o->getProperty ("device").toString();
         if (auto* modes = o->getProperty ("modes").getArray())

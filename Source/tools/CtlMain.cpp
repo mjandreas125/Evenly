@@ -14,6 +14,7 @@
 #include <mmdeviceapi.h>
 #include <endpointvolume.h>
 #include <propsys.h>
+#include <chrono>
 #include <cstdio>
 #include <string>
 #include <thread>
@@ -301,6 +302,32 @@ int monitor (const std::wstring& ep, int seconds)
     return 0;
 }
 
+// Fine-grained recording (a line per audio block) for tracking down dropouts: the sound itself is not touched.
+int trace (const std::wstring& ep, int seconds)
+{
+    HANDLE h;
+    rv::SharedBlock* b = openShared (ep, h);
+    if (! b) { std::printf ("the effect is not running on this device (no shared block; error %lu)\n", GetLastError()); return 5; }
+    const auto t0 = std::chrono::steady_clock::now();
+    uint32_t lastBeat = b->telemetry.heartbeat;
+    std::printf ("ms  beat  inM  outPeak  levelerDb  limiterDb\n");
+    while (std::chrono::steady_clock::now() - t0 < std::chrono::seconds (seconds))
+    {
+        const auto& t = b->telemetry;
+        const uint32_t beat = t.heartbeat;
+        if (beat != lastBeat)
+        {
+            const auto ms = std::chrono::duration_cast<std::chrono::milliseconds> (std::chrono::steady_clock::now() - t0).count();
+            std::printf ("%lld %u %.1f %.4f %+.1f %.1f\n", (long long) ms, beat, t.inMomentary, t.outPeak, t.levelerGainDb, t.limiterMinGainDb);
+            lastBeat = beat;
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (2));
+    }
+    UnmapViewOfFile (b);
+    CloseHandle (h);
+    return 0;
+}
+
 bool saveParams (const std::wstring& ep, const rv::EngineParams& p)
 {
     wchar_t dir[MAX_PATH] {};
@@ -369,6 +396,7 @@ int wmain (int argc, wchar_t** argv)
     if (cmd == L"install") return install (ep);
     if (cmd == L"uninstall") return uninstall (ep);
     if (cmd == L"monitor") return monitor (ep, argc > 3 ? _wtoi (argv[3]) : 10);
+    if (cmd == L"trace") return trace (ep, argc > 3 ? _wtoi (argv[3]) : 30);
     if (cmd == L"set") return set (ep, argc - 3, argv + 3);
     if (cmd == L"volume") return volume (ep, argc > 3 ? _wtof (argv[3]) : -1.0);
     if (cmd == L"refresh") return policyWrite (ep, readString (HKEY_LOCAL_MACHINE, std::wstring (kRender) + L"\\" + ep + L"\\FxProperties", kEfx));

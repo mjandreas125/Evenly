@@ -87,7 +87,7 @@ private:
     void log (const juce::String& line);
 
     // settings
-    bool isEnabled = true, levelerOn = true, fxLoud = false, toneOn = true, keepOn = true;
+    bool isEnabled = true, levelerOn = true, fxLoud = false, toneOn = true, keepOn = false;
     float vol = 0.8f;                         // -9.2 LUFS: near what FxSound users are used to, still no heavy limiting
     Kind manual = Kind::Unknown;
     std::array<ModeTweaks, 4> tweakFor {};

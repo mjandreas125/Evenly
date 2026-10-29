@@ -1345,6 +1345,7 @@ void MainComponent::showMoreMenu()
     m.addItem (500, L ("Alt + ` — быстро сменить режим из любого окна", "Alt + ` switches the mode from any window"), false);
     m.addSeparator();
     m.addItem (1, keepText, true, c.keepAwake());
+    m.addItem (501, L ("Если после паузы теряются слова; может слегка шипеть", "For cut-off words after a pause; may hiss slightly"), false);
     m.addItem (2, L ("Громкость как в FxSound (без выравнивания)", "FxSound-style loudness (no leveling)"), true, c.fxSoundLoudness());
     m.addSeparator();
     juce::PopupMenu scale;
