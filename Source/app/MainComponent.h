@@ -37,12 +37,13 @@ public:
 class NeoButton : public juce::TextButton, private juce::Timer
 {
 public:
+    static constexpr int kGlow = 12;   // place the button with bounds().expanded (kGlow)
     NeoButton() { setMouseCursor (juce::MouseCursor::PointingHandCursor); }
     void paintButton (juce::Graphics& g, bool, bool) override
     {
         const bool primary = getProperties().getWithDefault ("primary", false);
         const juce::Colour c = primary ? col::accent : neoTint();
-        auto r = getLocalBounds().toFloat().reduced (1.5f + pressA * 1.2f);
+        auto r = getLocalBounds().toFloat().reduced (kGlow + pressA * 1.2f);   // the rest of the bounds is for the glow
         juce::Path p;
         p.addRoundedRectangle (r, 10.0f);
         if (hoverA > 0.02f) juce::DropShadow (c.withAlpha ((primary ? 0.45f : 0.30f) * hoverA), 10, { 0, 0 }).drawForPath (g, p);

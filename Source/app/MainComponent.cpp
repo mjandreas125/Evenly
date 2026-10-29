@@ -134,7 +134,7 @@ void RovnoLookAndFeel::getIdealPopupMenuItemSize (const juce::String& text, bool
 {
     if (isSeparator) { idealWidth = 50; idealHeight = 13; return; }
     idealHeight = 40;
-    idealWidth = juce::GlyphArrangement::getStringWidthInt (getPopupMenuFont(), text) + 78;
+    idealWidth = juce::GlyphArrangement::getStringWidthInt (getPopupMenuFont(), text) + 98;
 }
 
 void RovnoLookAndFeel::drawPopupMenuItem (juce::Graphics& g, const juce::Rectangle<int>& area, bool isSeparator, bool isActive,
@@ -144,10 +144,11 @@ void RovnoLookAndFeel::drawPopupMenuItem (juce::Graphics& g, const juce::Rectang
     if (isSeparator)
     {
         g.setColour (juce::Colours::white.withAlpha (0.10f));
-        g.fillRect (area.reduced (16, 0).withHeight (1).withY (area.getCentreY()));
+        g.fillRect (area.reduced (26, 0).withHeight (1).withY (area.getCentreY()));
         return;
     }
-    auto r = area.reduced (6, 2).toFloat();
+    // JUCE gives every item the full width of the window; the panel is drawn 10 px inside it
+    auto r = area.reduced (16, 2).toFloat();
     const juce::Colour base = textColour ? *textColour : col::text;
     if (isHighlighted && isActive)
     {
@@ -181,10 +182,11 @@ void RovnoLookAndFeel::drawPopupMenuItem (juce::Graphics& g, const juce::Rectang
 class Switch : public juce::ToggleButton, private juce::Timer
 {
 public:
+    static constexpr int kGlow = 12;   // place the switch with bounds().expanded (kGlow)
     Switch() { setClickingTogglesState (true); setMouseCursor (juce::MouseCursor::PointingHandCursor); onStateChange = [this] { startTimerHz (60); }; }
     void paintButton (juce::Graphics& g, bool over, bool) override
     {
-        auto r = getLocalBounds().toFloat().reduced (4.0f);
+        auto r = getLocalBounds().toFloat().reduced (kGlow);   // the rest of the bounds is for the glow
         const float e = easeOut (pos);
         const juce::Colour c = juce::Colours::white.withAlpha (0.28f).interpolatedWith (onColour, e);
         juce::Path track;
@@ -218,6 +220,7 @@ class ModeBar : public juce::Component, private juce::Timer
 {
 public:
     std::function<void (Kind)> onPick;   // Kind::Unknown = auto
+    static constexpr int kGlow = 18;   // place the bar with bounds().expanded (kGlow)
     ModeBar() { setMouseCursor (juce::MouseCursor::PointingHandCursor); startTimerHz (60); }
     void set (bool autoOn, Kind current)
     {
@@ -231,8 +234,9 @@ public:
     void paint (juce::Graphics& g) override
     {
         const auto items = order();
-        const float w = (float) getWidth() / (float) items.size();
-        auto tileR = [&] (size_t i) { return juce::Rectangle<float> (w * (float) i, 0, w, (float) getHeight()).reduced (4.0f, 0.0f); };
+        const auto inner = getLocalBounds().toFloat().reduced ((float) kGlow);
+        const float w = inner.getWidth() / (float) items.size();
+        auto tileR = [&] (size_t i) { return juce::Rectangle<float> (inner.getX() + w * (float) i, inner.getY(), w, inner.getHeight()).reduced (4.0f, 0.0f); };
         for (size_t i = 0; i < items.size(); ++i)
         {
             auto r = tileR (i);
@@ -244,7 +248,7 @@ public:
         }
         // the gliding selection: a fill that rises from the bottom, a lit hairline and a glowing base
         {
-            auto r = juce::Rectangle<float> (w * pillX, 0, w, (float) getHeight()).reduced (4.0f, 0.0f);
+            auto r = juce::Rectangle<float> (inner.getX() + w * pillX, inner.getY(), w, inner.getHeight()).reduced (4.0f, 0.0f);
             juce::Path p;
             p.addRoundedRectangle (r, 14.0f);
             juce::DropShadow (pillColour.withAlpha (0.30f), 14, { 0, 0 }).drawForPath (g, p);
@@ -308,7 +312,7 @@ private:
     }
     static std::vector<Kind> order() { return { Kind::Unknown, Kind::Music, Kind::Speech, Kind::Movie, Kind::Game }; }
     static int indexOf (Kind k) { const auto o = order(); for (size_t i = 0; i < o.size(); ++i) if (o[i] == k) return (int) i; return 0; }
-    int indexAt (int x) const { return juce::jlimit (0, 4, x * 5 / juce::jmax (1, getWidth())); }
+    int indexAt (int x) const { return juce::jlimit (0, 4, (x - kGlow) * 5 / juce::jmax (1, getWidth() - 2 * kGlow)); }
     bool isAuto = true, seeded = false;
     Kind now = Kind::Music;
     int selIndex = 0, hover = -1;
@@ -1185,9 +1189,9 @@ void MainComponent::resized()
     {
         // right side of the header: output, more, power
         auto hr = headerR;
-        power->setBounds (hr.removeFromRight (62).withSizeKeepingCentre (62, 38));
+        power->setBounds (hr.removeFromRight (62).withSizeKeepingCentre (62, 38).expanded (Switch::kGlow - 4));
         hr.removeFromRight (10);
-        moreButton.setBounds (hr.removeFromRight (84).withSizeKeepingCentre (84, 44));
+        moreButton.setBounds (hr.removeFromRight (84).withSizeKeepingCentre (84 - 3, 44 - 3).expanded (NeoButton::kGlow));
         hr.removeFromRight (10);
         deviceBox->setBounds (hr.removeFromRight (340).withSizeKeepingCentre (340, 44));
     }
@@ -1196,26 +1200,26 @@ void MainComponent::resized()
     if (banner() != Banner::None)
     {
         bannerR = r.removeFromTop (kBannerH);
-        bannerButton.setBounds (bannerR.getRight() - 150, bannerR.getCentreY() - 21, 134, 42);
+        bannerButton.setBounds (juce::Rectangle<int> (bannerR.getRight() - 150, bannerR.getCentreY() - 21, 134, 42).reduced (2).expanded (NeoButton::kGlow));
         r.removeFromTop (kGap);
     }
     auto row1 = r.removeFromTop (kRow1);
     nowR = row1.removeFromLeft (560);
     row1.removeFromLeft (kGap - 8);
     modesR = row1.withTrimmedLeft (8);
-    modes->setBounds (modesR);
+    modes->setBounds (modesR.expanded (ModeBar::kGlow));
     r.removeFromTop (kGap);
 
     auto row2 = r.removeFromTop (kRow2);
     loudR = row2.removeFromLeft (640);
     row2.removeFromLeft (kGap);
     soundR = row2;
-    levelSwitch->setBounds (juce::Rectangle<int> (loudR.getRight() - 24 - 56, loudR.getY() + 16, 56, 34));
+    levelSwitch->setBounds (juce::Rectangle<int> (loudR.getRight() - 24 - 56, loudR.getY() + 16, 56, 34).expanded (Switch::kGlow - 4));
     spectrum->setBounds (loudR.getX() + 24, loudR.getY() + 66, loudR.getWidth() - 48, 150);
     graph->setBounds (loudR.getX() + 24, loudR.getY() + 242, loudR.getWidth() - 48, 108);
     volume.setBounds (loudR.getX() + 24 + 140, loudR.getBottom() - 18 - 36, loudR.getWidth() - 48 - 140 - 56, 36);
 
-    resetSound.setBounds (soundR.getRight() - 24 - 104, soundR.getY() + 15, 104, 34);
+    resetSound.setBounds (juce::Rectangle<int> (soundR.getRight() - 24 - 104, soundR.getY() + 15, 104, 34).reduced (2).expanded (NeoButton::kGlow));
     {
         int y = soundR.getY() + 66;
         for (auto* s : { &fid, &bass, &surr, &amb })
@@ -1223,7 +1227,7 @@ void MainComponent::resized()
             s->setBounds (soundR.getX() + 24 + 104, y, soundR.getWidth() - 48 - 104 - 56, 40);
             y += 50;
         }
-        toneSwitch->setBounds (soundR.getRight() - 24 - 56, y + 20, 56, 34);
+        toneSwitch->setBounds (juce::Rectangle<int> (soundR.getRight() - 24 - 56, y + 20, 56, 34).expanded (Switch::kGlow - 4));
     }
     r.removeFromTop (kGap);
     eqR = r.removeFromTop (kEqClosed);

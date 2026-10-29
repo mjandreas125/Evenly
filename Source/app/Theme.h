@@ -108,16 +108,26 @@ inline void drawKindIcon (juce::Graphics& g, Kind k, juce::Rectangle<float> r, j
             g.drawLine (x + w * 0.84f, y + h * 0.68f, x + w * 0.84f, y + h * 0.08f, stroke);
             g.drawLine (x + w * 0.38f, y + h * 0.16f, x + w * 0.84f, y + h * 0.08f, stroke * 1.6f);
             break;
-        case Kind::Speech:  // a speech bubble with lines
+        case Kind::Speech:  // a speech bubble: one closed outline with the tail, two lines of text inside
         {
+            const float L = x + w * 0.08f, R = x + w * 0.92f, T = y + h * 0.14f, B = y + h * 0.68f, r = w * 0.15f;
             juce::Path b;
-            b.addRoundedRectangle (x + w * 0.06f, y + h * 0.12f, w * 0.88f, h * 0.60f, w * 0.18f);
-            b.startNewSubPath (x + w * 0.26f, y + h * 0.70f);
-            b.lineTo (x + w * 0.20f, y + h * 0.92f);
-            b.lineTo (x + w * 0.46f, y + h * 0.71f);
+            b.startNewSubPath (L + r, T);
+            b.lineTo (R - r, T);
+            b.quadraticTo (R, T, R, T + r);
+            b.lineTo (R, B - r);
+            b.quadraticTo (R, B, R - r, B);
+            b.lineTo (x + w * 0.52f, B);               // the tail: down to the left and back to the edge
+            b.lineTo (x + w * 0.26f, y + h * 0.90f);
+            b.lineTo (x + w * 0.30f, B);
+            b.lineTo (L + r, B);
+            b.quadraticTo (L, B, L, B - r);
+            b.lineTo (L, T + r);
+            b.quadraticTo (L, T, L + r, T);
+            b.closeSubPath();
             g.strokePath (b, juce::PathStrokeType (stroke, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-            g.drawLine (x + w * 0.26f, y + h * 0.34f, x + w * 0.74f, y + h * 0.34f, stroke);
-            g.drawLine (x + w * 0.26f, y + h * 0.50f, x + w * 0.60f, y + h * 0.50f, stroke);
+            g.drawLine (x + w * 0.28f, y + h * 0.34f, x + w * 0.72f, y + h * 0.34f, stroke);
+            g.drawLine (x + w * 0.28f, y + h * 0.49f, x + w * 0.58f, y + h * 0.49f, stroke);
             break;
         }
         case Kind::Movie:   // a film frame with perforations
