@@ -188,14 +188,25 @@ inline void glowDot (juce::Graphics& g, juce::Point<float> c, float radius, juce
     g.fillEllipse (c.x - radius * 2.6f, c.y - radius * 2.6f, radius * 5.2f, radius * 5.2f);
 }
 
+// True while the main window paints baked glass panes: drawCard then adds only the lit top edge.
+inline bool& glassOn() { static bool on = false; return on; }
+
 // A glass panel: translucent, a hairline all round, and a thin lit edge on top that takes the
 // colour of the current mode and fades out toward the sides.
 inline void drawCard (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour fill = col::card, float radius = 14.0f)
 {
-    g.setGradientFill (juce::ColourGradient (fill.brighter (0.05f).withAlpha (0.78f), 0, r.getY(), fill.darker (0.2f).withAlpha (0.70f), 0, r.getBottom(), false));
-    g.fillRoundedRectangle (r, radius);
-    g.setColour (juce::Colours::white.withAlpha (0.075f));
-    g.drawRoundedRectangle (r.reduced (0.5f), radius, 1.0f);
+    if (! glassOn())
+    {
+        g.setGradientFill (juce::ColourGradient (fill.brighter (0.05f).withAlpha (0.78f), 0, r.getY(), fill.darker (0.2f).withAlpha (0.70f), 0, r.getBottom(), false));
+        g.fillRoundedRectangle (r, radius);
+        g.setColour (juce::Colours::white.withAlpha (0.075f));
+        g.drawRoundedRectangle (r.reduced (0.5f), radius, 1.0f);
+    }
+    else
+    {
+        g.setColour (neoTint().withAlpha (0.06f));   // the colour of the mode, faintly, through the glass
+        g.fillRoundedRectangle (r.reduced (1.0f), radius);
+    }
     juce::Graphics::ScopedSaveState s (g);
     juce::Path clip;
     clip.addRoundedRectangle (r, radius);

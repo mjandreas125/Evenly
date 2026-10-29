@@ -686,13 +686,14 @@ class EqPanel : public juce::Component
 {
 public:
     std::function<void()> onToggle;
+    const GlassBackdrop* glass = nullptr;   // the main window's glass, for the pane's own fill
     float anim = 0.0f;            // 0 closed .. 1 open, set by the main component
     bool open = false;
     void paint (juce::Graphics& g) override
     {
         const auto r = getLocalBounds().toFloat();
-        g.setColour (col::bg.brighter (0.035f));
-        g.fillRoundedRectangle (r, 14.0f);
+        if (glass != nullptr && glass->scene.isValid()) glass->paintLive (g, r, getPosition());
+        else { g.setColour (col::bg.brighter (0.035f)); g.fillRoundedRectangle (r, 14.0f); }
         drawCard (g, r, col::card.brighter (0.05f * hoverA));
         const auto head = getLocalBounds().withHeight (kEqClosed);
         g.setColour (col::text);
@@ -776,6 +777,7 @@ MainComponent::MainComponent (Controller& controller) : c (controller)
     eqPanel->addChildComponent (eq.get());
     scrim->onClick = [this] { setEqOpen (false, true); };
     eqPanel->onToggle = [this] { setEqOpen (! eqOpen, true); };
+    eqPanel->glass = &glass;
     resetSound.setMouseCursor (juce::MouseCursor::PointingHandCursor);
     bannerButton.setMouseCursor (juce::MouseCursor::PointingHandCursor);
     moreButton.setMouseCursor (juce::MouseCursor::PointingHandCursor);
@@ -1015,25 +1017,23 @@ void MainComponent::paint (juce::Graphics& g)
     const juce::Colour kc = kcCur;
     neoTint() = kc;
 
-    // The mood of the current mode as a soft glow behind the header, plus a faint one low on the right.
-    g.setGradientFill (juce::ColourGradient (kc.withAlpha (0.16f), 150.0f, -40.0f, kc.withAlpha (0.0f), 150.0f + 620.0f, 520.0f, true));
-    g.fillRect (getLocalBounds());
-    if (gridImage.getWidth() != getWidth() || gridImage.getHeight() != getHeight())
+    // The liquid glass: the scene behind, then the baked panes over it (rebuilt when the size or the
+    // pixel density changes).
     {
-        // a faint dot grid, drawn once per size: the blueprint under the glass panels
-        gridImage = juce::Image (juce::Image::ARGB, getWidth(), getHeight(), true);
-        juce::Graphics gg (gridImage);
-        for (int y = 14; y < getHeight(); y += 28)
-            for (int x = 14; x < getWidth(); x += 28)
-            {
-                gg.setColour (juce::Colours::white.withAlpha (0.05f));
-                gg.fillRect ((float) x, (float) y, 1.5f, 1.5f);
-            }
+        const float scale = std::round (g.getInternalContext().getPhysicalPixelScaleFactor() * 20.0f) / 20.0f;
+        std::vector<juce::Rectangle<int>> panes { nowR, loudR, soundR };
+        if (banner() != Banner::None) panes.push_back (bannerR);
+        if (! glass.matches (getWidth(), getHeight(), scale, panes))
+        {
+            glass.build (getWidth(), getHeight(), scale, panes);
+        }
+        glassOn() = true;
+        g.drawImage (glass.scene, getLocalBounds().toFloat());
+        // the mood of the current mode as a soft light over the scene
+        g.setGradientFill (juce::ColourGradient (kc.withAlpha (0.14f), 150.0f, -40.0f, kc.withAlpha (0.0f), 150.0f + 620.0f, 520.0f, true));
+        g.fillRect (getLocalBounds());
+        g.drawImage (glass.panes, getLocalBounds().toFloat());
     }
-    g.drawImageAt (gridImage, 0, 0);
-    g.setGradientFill (juce::ColourGradient (col::accent2.withAlpha (0.06f), (float) getWidth(), (float) getHeight(),
-                                             col::accent2.withAlpha (0.0f), (float) getWidth() - 560.0f, (float) getHeight() - 240.0f, true));
-    g.fillRect (getLocalBounds());
 
     // header: mark, name, status
     const auto lg = juce::Rectangle<float> ((float) headerR.getX(), (float) headerR.getY() + 6.0f, 52.0f, 52.0f);
@@ -1062,7 +1062,9 @@ void MainComponent::paint (juce::Graphics& g)
     // banner
     if (banner() != Banner::None)
     {
-        drawCard (g, bannerR.toFloat(), col::warn.withAlpha (0.12f).overlaidWith (col::card.withAlpha (0.88f)), 18.0f);
+        drawCard (g, bannerR.toFloat());
+        g.setColour (col::warn.withAlpha (0.12f));
+        g.fillRoundedRectangle (bannerR.toFloat().reduced (1.0f), GlassBackdrop::kRadius);
         g.setColour (col::warn);
         g.fillRoundedRectangle (juce::Rectangle<float> ((float) bannerR.getX() + 18.0f, (float) bannerR.getCentreY() - 10.0f, 4.0f, 20.0f), 2.0f);
         g.setFont (font (15.0f, 500));

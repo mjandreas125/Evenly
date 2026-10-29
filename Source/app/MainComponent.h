@@ -1,6 +1,7 @@
 #pragma once
 // The main window's content.
 #include "Controller.h"
+#include "Glass.h"
 #include "Theme.h"
 
 namespace rv::ui
@@ -149,7 +150,9 @@ private:
     bool eqOpen = false, syncing = false, eqHover = false;
     float eqAnim = 0.0f, eqHoverAmt = 0.0f;                 // 0 closed .. 1 open (chevron, fade of the plot)
     juce::Colour kcCur = col::accent;    // the mode colour, eased toward the current mode's
-    juce::Image logo, gridImage;
+    juce::Image logo;
+    GlassBackdrop glass;
+    bool glassDirty = true;
     int graphTick = 0;
     juce::Rectangle<int> headerR, bannerR, nowR, modesR, loudR, soundR, eqR, footR, eqHeadR;
 };
