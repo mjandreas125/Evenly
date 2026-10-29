@@ -483,14 +483,18 @@ void Controller::applyParams()
     const bool toneHere = toneOn && s.toneStrength > 0;
     for (int i = 0; i < 10; ++i) p.toneDb[i] = toneHere ? tone.correction()[i] : 0.0f;
     p.loudness = (uint32_t) (! levelerOn ? LoudnessMode::Off : (fxLoud ? LoudnessMode::FxSoundBoost : LoudnessMode::Leveler));
-    p.boost = fxLoud ? 118 : 0;
-    p.targetLufs = targetLufsFor (vol) + s.targetOffsetDb;
+    // On the MX34VQ, speech and music get FxSound's Dynamic Boost after the leveler, like the user's tuned FxSound
+    // presets: a plain peak limiter cannot make speech as loud (measured: 3 LUFS quieter on the same recordings).
+    // The leveler then only has to hand the boost the same input level every time.
+    const bool boosted = ! fxLoud && deviceKind == DeviceKind::MX34VQ && (state.kind == Kind::Speech || state.kind == Kind::Music);
+    p.boost = (fxLoud || boosted) ? 118 : 0;
+    p.targetLufs = targetLufsFor (vol) + s.targetOffsetDb - (boosted ? 6.0f : 0.0f);
     p.maxBoostDb = s.maxBoostDb;
     p.maxCutDb = 24;
     p.riseDbPerSec = s.riseDbPerSec;
     p.jumpGuardDb = s.jumpGuardDb;
     p.quietToNewSec = s.quietToNewSec;
-    p.ceilingDb = -1;
+    p.ceilingDb = boosted ? -0.3f : -1.0f;   // FxSound's own maximum output
     link.send (p);
 }
 } // namespace rv

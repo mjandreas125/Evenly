@@ -34,7 +34,7 @@ inline ModeSound defaultSound (DeviceKind device, Kind kind)
     {
         switch (kind)
         {
-            case Kind::Speech: return { 50, 0, 0, 0, { 0, -2.3f, -5.3f, -1.6f, 0, 0, 0, -1.7f, -2.0f, -1.3f }, 20, 1.5f, 1.0f, 3, 0, 0.6f };
+            case Kind::Speech: return { 50, 0, 0, 0, { 0, -2.3f, -5.3f, -1.6f, 1, 1, 1, -1.7f, -2.0f, -1.3f }, 20, 1.5f, 1.0f, 3, 0, 0.6f };
             case Kind::Movie: return { 60, 0, 15, 12, { 0, 0.5f, -2.5f, -0.8f, 0, 0, 0.5f, -1.0f, -1.5f, -1.0f }, 15, 3, 2.5f, 2, -2, 0.5f };
             case Kind::Game: return { 40, 0, 30, 15, { 0, 1.0f, -1.0f, 0, 0, 0, 0.5f, 0, -1.0f, -1.0f }, 9, 6, 6, 1, -2, 0 };
             default: return { 80, 21, 22, 20, { 0, 2.2f, -0.8f, 0, 0, 0, 0, -1.2f, -1.5f, -0.8f }, 12, 4, 4, 2, 0, 0.5f };

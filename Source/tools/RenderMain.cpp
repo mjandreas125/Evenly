@@ -24,7 +24,7 @@ int main (int argc, char** argv)
     if (argc < 3)
     {
         std::printf ("usage: rovno_render in.wav out.wav [--fx fid,amb,surr,boost,bass] [--eq ...10] [--tone ...10] "
-                     "[--loudness off|leveler|fxsound] [--target lufs] [--block n] [--frames out.csv]\n");
+                     "[--loudness off|leveler|fxsound] [--target lufs] [--ceiling dB] [--block n] [--frames out.csv]\n");
         return 1;
     }
     rv::wav::Audio a;
@@ -45,6 +45,7 @@ int main (int argc, char** argv)
         else if (k == "--tone") { const auto n = numbers (v); for (size_t j = 0; j < 10 && j < n.size(); ++j) p.toneDb[j] = n[j]; }
         else if (k == "--loudness") p.loudness = std::string (v) == "off" ? 0u : (std::string (v) == "fxsound" ? 2u : 1u);
         else if (k == "--target") p.targetLufs = (float) std::atof (v);
+        else if (k == "--ceiling") p.ceilingDb = (float) std::atof (v);
         else if (k == "--maxboost") p.maxBoostDb = (float) std::atof (v);
         else if (k == "--guard") p.jumpGuardDb = (float) std::atof (v);
         else if (k == "--rise") p.riseDbPerSec = (float) std::atof (v);

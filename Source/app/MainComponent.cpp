@@ -405,42 +405,57 @@ public:
         const auto all = getLocalBounds().toFloat();
         const auto r = all.withTrimmedBottom (22.0f);
         // Measured on real material through this engine: a third octave peaks around -6 dB and
-        // ordinary content sits between -50 and -10, so this window fills the bars without pinning
-        // them to the top.
+        // ordinary content sits between -50 and -10, so this window fills the plot without pinning
+        // it to the top.
         const float lo = -66.0f, hi = -6.0f;
-        auto hOf = [&] (float db) { return juce::jlimit (0.0f, 1.0f, (db - lo) / (hi - lo)) * (r.getHeight() - 2.0f); };
+        auto yOf = [&] (float db) { return r.getBottom() - juce::jlimit (0.0f, 1.0f, (db - lo) / (hi - lo)) * (r.getHeight() - 4.0f) - 1.0f; };
         const float step = r.getWidth() / (float) kBands;
-        const float w = juce::jmax (4.0f, step - 4.0f);
+        auto xOf = [&] (int i) { return r.getX() + step * ((float) i + 0.5f); };
         const juce::Colour base = live ? colour : col::dim;
-        for (int i = 0; i < kBands; ++i)
+
+        // a quiet grid, like an analyser: every 20 dB
+        for (float db : { -46.0f, -26.0f })
         {
-            const float x = r.getX() + step * (float) i + (step - w) * 0.5f;
-            g.setColour (juce::Colours::white.withAlpha (0.045f));
-            g.fillRoundedRectangle (x, r.getY(), w, r.getHeight(), w * 0.5f);
-            const float h = hOf (shown[(size_t) i]);
-            if (h > 0.6f)
-            {
-                const float hh = juce::jmax (h, w);
-                g.setGradientFill (juce::ColourGradient (base, 0, r.getBottom() - hh, base.withAlpha (0.28f), 0, r.getBottom(), false));
-                g.fillRoundedRectangle (x, r.getBottom() - hh, w, hh, w * 0.5f);
-                g.setColour (base.brighter (0.6f).withAlpha (0.55f));
-                g.fillRoundedRectangle (x, r.getBottom() - hh, w, juce::jmin (3.0f, hh), 1.5f);
-            }
-            const float ph = hOf (shownPeaks[(size_t) i]);
-            if (ph > 3.0f)
-            {
-                g.setColour (base.brighter (0.3f).withAlpha (live ? 0.75f : 0.25f));
-                g.fillRoundedRectangle (x, r.getBottom() - ph - 3.0f, w, 2.0f, 1.0f);
-            }
+            g.setColour (juce::Colours::white.withAlpha (0.05f));
+            g.fillRect (r.getX(), yOf (db), r.getWidth(), 1.0f);
         }
+        g.setColour (juce::Colours::white.withAlpha (0.10f));
+        g.fillRect (r.getX(), r.getBottom() - 0.5f, r.getWidth(), 1.0f);
+
+        // the spectrum as one smooth curve (Catmull-Rom through the third-octave points)
+        auto curve = [&] (const std::array<float, (size_t) kBands>& v, juce::Path& p)
+        {
+            auto pt = [&] (int i) { i = juce::jlimit (0, kBands - 1, i); return juce::Point<float> (xOf (i), yOf (v[(size_t) i])); };
+            p.startNewSubPath (r.getX(), pt (0).y);
+            p.lineTo (pt (0));
+            for (int i = 0; i < kBands - 1; ++i)
+            {
+                const auto p0 = pt (i - 1), p1 = pt (i), p2 = pt (i + 1), p3 = pt (i + 2);
+                p.cubicTo (p1 + (p2 - p0) / 6.0f, p2 - (p3 - p1) / 6.0f, p2);
+            }
+            p.lineTo (r.getRight(), pt (kBands - 1).y);
+        };
+        juce::Path line;
+        curve (shown, line);
+        juce::Path fill (line);
+        fill.lineTo (r.getRight(), r.getBottom());
+        fill.lineTo (r.getX(), r.getBottom());
+        fill.closeSubPath();
+        g.setGradientFill (juce::ColourGradient (base.withAlpha (live ? 0.42f : 0.12f), 0, r.getY(), base.withAlpha (0.0f), 0, r.getBottom(), false));
+        g.fillPath (fill);
+        // the recent top of every band, as a faint thin line
+        juce::Path tops;
+        curve (shownPeaks, tops);
+        g.setColour (base.withAlpha (live ? 0.28f : 0.10f));
+        g.strokePath (tops, juce::PathStrokeType (1.0f));
+        g.setColour (base.brighter (0.25f).withAlpha (live ? 1.0f : 0.4f));
+        g.strokePath (line, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
         g.setColour (col::faint);
         g.setFont (font (12.5f, 500));
         const char* labels[5] = { "50", "200", "800", "3,2k", "12k" };
         for (int k = 0; k < 5; ++k)
-        {
-            const float cx = r.getX() + step * ((float) (k * 6) + 0.5f);
-            g.drawText (labels[k], juce::Rectangle<float> (cx - 24, all.getBottom() - 18, 48, 18), juce::Justification::centred);
-        }
+            g.drawText (labels[k], juce::Rectangle<float> (xOf (k * 6) - 24, all.getBottom() - 18, 48, 18), juce::Justification::centred);
     }
 private:
     void timerCallback() override
@@ -498,10 +513,18 @@ public:
         const float ty = yOf (tgt);
         g.setColour (col::dim.withAlpha (0.7f));
         for (float x = r.getX(); x < r.getRight(); x += 9.0f) g.fillRect (x, ty - 0.75f, juce::jmin (4.5f, r.getRight() - x), 1.5f);
-        g.setFont (font (12.5f, 600));
-        g.setColour (col::dim);
-        const float ly = ty - 20 < r.getY() ? ty + 3 : ty - 20;
-        g.drawText (L ("цель", "target"), juce::Rectangle<float> (r.getRight() - 60, ly, 60, 18), juce::Justification::centredRight);
+        {
+            // the label sits in a small pill at the left edge, away from the lines
+            g.setFont (font (12.5f, 600));
+            const juce::String t = L ("цель", "target");
+            const float w = (float) juce::GlyphArrangement::getStringWidthInt (g.getCurrentFont(), t) + 14.0f;
+            const float ly = ty - 24 < r.getY() ? ty + 4 : ty - 24;
+            const juce::Rectangle<float> pill (r.getX() + 4.0f, ly, w, 20.0f);
+            g.setColour (col::card.withAlpha (0.92f));
+            g.fillRoundedRectangle (pill, 10.0f);
+            g.setColour (col::dim);
+            g.drawText (t, pill, juce::Justification::centred);
+        }
         if (hist.size() < 2) return;
         const size_t n = 180;
         const float dx = r.getWidth() / (float) (n - 1);

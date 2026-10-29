@@ -41,7 +41,11 @@ public:
         if (std::memcmp (&p, &params, sizeof (p)) != 0 || firstParams) applyParams (p);
     }
     const EngineParams& currentParams() const { return params; }
-    int latencySamples() const { return params.loudness == (uint32_t) LoudnessMode::FxSoundBoost ? fxp.maxi.maxDelay : limiter.latency(); }
+    int latencySamples() const
+    {
+        if (params.loudness == (uint32_t) LoudnessMode::FxSoundBoost) return fxp.maxi.maxDelay;
+        return limiter.latency() + (params.loudness == (uint32_t) LoudnessMode::Leveler && params.boost > 0 ? fxp.maxi.maxDelay : 0);
+    }
 
     // In place, interleaved, `frames` x channels. Telemetry may be null.
     void process (float* x, int frames, Telemetry* tel)
@@ -84,6 +88,10 @@ public:
                         break;
                     case LoudnessMode::Leveler:
                         leveler.process (p, n, nch, nch, levelerSettings);
+                        // Optional FxSound Dynamic Boost after the leveler: the leveler gives it the same input level
+                        // every time, the boost raises speech to FxSound's loudness (a plain peak limiter cannot,
+                        // speech has too much headroom between its loudness and its peaks).
+                        if (params.boost > 0 && nch >= 2) maxi.process (p, n, nch, fxp);
                         limiter.process (p, n, nch, ceiling);
                         break;
                     default:
