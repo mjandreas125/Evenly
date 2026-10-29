@@ -161,14 +161,40 @@ inline void drawKindIcon (juce::Graphics& g, Kind k, juce::Rectangle<float> r, j
     }
 }
 
-// A panel: a faint vertical sheen, a hairline that is lighter on top (light falls from above).
-inline void drawCard (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour fill = col::card, float radius = 20.0f)
+// The colour of the mode in use; panels pick it up on their top edge (set by the main window).
+inline juce::Colour& neoTint() { static juce::Colour c = col::accent; return c; }
+
+// Neon glow: the same path stroked wide and faint, then narrower, then the line itself.
+inline void glowStroke (juce::Graphics& g, const juce::Path& p, juce::Colour c, float width, float glow = 1.0f)
 {
-    g.setGradientFill (juce::ColourGradient (fill.brighter (0.07f), 0, r.getY(), fill, 0, r.getBottom(), false));
+    g.setColour (c.withAlpha (0.07f * glow)); g.strokePath (p, juce::PathStrokeType (width + 9.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    g.setColour (c.withAlpha (0.12f * glow)); g.strokePath (p, juce::PathStrokeType (width + 5.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    g.setColour (c); g.strokePath (p, juce::PathStrokeType (width, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+}
+
+inline void glowDot (juce::Graphics& g, juce::Point<float> c, float radius, juce::Colour colour, float strength = 1.0f)
+{
+    g.setGradientFill (juce::ColourGradient (colour.withAlpha (0.45f * strength), c.x, c.y, colour.withAlpha (0.0f), c.x + radius * 2.6f, c.y, true));
+    g.fillEllipse (c.x - radius * 2.6f, c.y - radius * 2.6f, radius * 5.2f, radius * 5.2f);
+}
+
+// A glass panel: translucent, a hairline all round, and a thin lit edge on top that takes the
+// colour of the current mode and fades out toward the sides.
+inline void drawCard (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour fill = col::card, float radius = 14.0f)
+{
+    g.setGradientFill (juce::ColourGradient (fill.brighter (0.05f).withAlpha (0.78f), 0, r.getY(), fill.darker (0.2f).withAlpha (0.70f), 0, r.getBottom(), false));
     g.fillRoundedRectangle (r, radius);
-    g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.10f), 0, r.getY(),
-                                             juce::Colours::white.withAlpha (0.03f), 0, r.getBottom(), false));
+    g.setColour (juce::Colours::white.withAlpha (0.075f));
     g.drawRoundedRectangle (r.reduced (0.5f), radius, 1.0f);
+    juce::Graphics::ScopedSaveState s (g);
+    juce::Path clip;
+    clip.addRoundedRectangle (r, radius);
+    g.reduceClipRegion (clip);
+    juce::ColourGradient edge (neoTint().withAlpha (0.0f), r.getX() + radius, r.getY(), neoTint().withAlpha (0.0f), r.getRight() - radius, r.getY(), false);
+    edge.addColour (0.18, neoTint().withAlpha (0.55f));
+    edge.addColour (0.5, neoTint().withAlpha (0.12f));
+    g.setGradientFill (edge);
+    g.fillRect (r.getX() + radius, r.getY(), r.getWidth() - radius * 2, 1.2f);
 }
 
 inline float easeOut (float t) { t = juce::jlimit (0.0f, 1.0f, t); return 1.0f - (1.0f - t) * (1.0f - t) * (1.0f - t); }

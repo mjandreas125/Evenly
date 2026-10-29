@@ -105,10 +105,10 @@ int QuickMenu::tileAt (juce::Point<int> p) const
 void QuickMenu::paint (juce::Graphics& g)
 {
     auto r = getLocalBounds().toFloat().reduced (1.0f);
-    g.setColour (juce::Colour (0xf2141619));
-    g.fillRoundedRectangle (r, 22.0f);
-    g.setColour (col::line);
-    g.drawRoundedRectangle (r, 22.0f, 1.2f);
+    g.setColour (juce::Colour (0xf20d0f13));
+    g.fillRoundedRectangle (r, 18.0f);
+    g.setColour (juce::Colours::white.withAlpha (0.10f));
+    g.drawRoundedRectangle (r, 18.0f, 1.0f);
     g.setColour (col::text);
     g.setFont (font (16.0f, 600));
     g.drawText (L ("Режим звука", "Sound mode"), juce::Rectangle<float> (26, 16, 300, 26), juce::Justification::centredLeft);
@@ -122,12 +122,33 @@ void QuickMenu::paint (juce::Graphics& g)
         auto t = tile (i);
         const juce::Colour kc = kindColour (k);
         const bool current = k == Kind::Unknown ? c.autoMode() : (! c.autoMode() && c.now().kind == k);
-        g.setColour (i == focus ? kc.withAlpha (0.20f) : col::card);
-        g.fillRoundedRectangle (t, 16.0f);
-        g.setColour (i == focus ? kc : (current ? kc.withAlpha (0.55f) : col::line));
-        g.drawRoundedRectangle (t.reduced (0.75f), 16.0f, i == focus ? 2.0f : 1.2f);
-        drawKindIcon (g, k, juce::Rectangle<float> (t.getCentreX() - 17, t.getY() + 18, 34, 34), i == focus || current ? kc : col::dim, 2.2f);
-        g.setColour (col::text);
+        const bool lit = i == focus;
+        g.setColour (juce::Colours::white.withAlpha (0.03f));
+        g.fillRoundedRectangle (t, 14.0f);
+        if (lit)
+        {
+            juce::Path tp;
+            tp.addRoundedRectangle (t, 14.0f);
+            juce::DropShadow (kc.withAlpha (0.35f), 14, { 0, 0 }).drawForPath (g, tp);
+            g.setColour (col::bg);
+            g.fillPath (tp);
+            g.setGradientFill (juce::ColourGradient (kc.withAlpha (0.02f), t.getX(), t.getY(), kc.withAlpha (0.30f), t.getX(), t.getBottom(), false));
+            g.fillPath (tp);
+            g.setColour (kc.withAlpha (0.8f));
+            g.strokePath (tp, juce::PathStrokeType (1.3f));
+            juce::Path base;
+            base.startNewSubPath (t.getX() + 16, t.getBottom() - 1.0f);
+            base.lineTo (t.getRight() - 16, t.getBottom() - 1.0f);
+            glowStroke (g, base, kc.brighter (0.2f), 2.0f, 1.3f);
+        }
+        else
+        {
+            g.setColour (current ? kc.withAlpha (0.55f) : juce::Colours::white.withAlpha (0.09f));
+            g.drawRoundedRectangle (t.reduced (0.5f), 14.0f, 1.0f);
+        }
+        if (lit) glowDot (g, { t.getCentreX(), t.getY() + 35.0f }, 11.0f, kc, 0.55f);
+        drawKindIcon (g, k, juce::Rectangle<float> (t.getCentreX() - 17, t.getY() + 18, 34, 34), lit || current ? kc.brighter (0.15f) : col::dim, 2.0f);
+        g.setColour (lit ? col::text : col::dim);
         g.setFont (font (14.0f, 600));
         g.drawText (kindName (k), t.withTop (t.getY() + 62).withHeight (22), juce::Justification::centred);
         g.setColour (col::faint);

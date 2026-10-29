@@ -32,57 +32,44 @@ void RovnoLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int w,
                                          juce::Slider::SliderStyle, juce::Slider& s)
 {
     const float cy = (float) y + (float) h * 0.5f;
-    const juce::Rectangle<float> track ((float) x, cy - 3.5f, (float) w, 7.0f);
-    g.setColour (juce::Colours::black.withAlpha (0.35f));
-    g.fillRoundedRectangle (track.expanded (0.0f, 0.5f), 3.5f);
-    g.setColour (col::line.brighter (0.05f));
-    g.fillRoundedRectangle (track, 3.5f);
     const juce::Colour c = s.findColour (juce::Slider::trackColourId);
+    g.setColour (juce::Colours::white.withAlpha (0.12f));
+    g.fillRoundedRectangle ((float) x, cy - 1.0f, (float) w, 2.0f, 1.0f);
     if (pos > (float) x + 1.0f)
     {
-        g.setGradientFill (juce::ColourGradient (c.withAlpha (0.55f), (float) x, cy, c, pos, cy, false));
-        g.fillRoundedRectangle (track.withRight (pos), 3.5f);
+        juce::Path line;
+        line.startNewSubPath ((float) x, cy);
+        line.lineTo (pos, cy);
+        glowStroke (g, line, c, 2.4f, s.isMouseOverOrDragging() ? 1.5f : 1.0f);
     }
     const bool active = s.isMouseOverOrDragging();
-    const float r = s.isMouseButtonDown() ? 11.0f : (active ? 10.5f : 9.5f);
-    if (active)
-    {
-        g.setColour (c.withAlpha (s.isMouseButtonDown() ? 0.30f : 0.20f));
-        g.fillEllipse (pos - r - 6, cy - r - 6, (r + 6) * 2, (r + 6) * 2);
-    }
-    g.setColour (juce::Colours::black.withAlpha (0.45f));
-    g.fillEllipse (pos - r, cy - r + 2.0f, r * 2, r * 2);
-    g.setColour (juce::Colours::white);
+    const float r = s.isMouseButtonDown() ? 8.0f : (active ? 7.5f : 6.5f);
+    if (active) glowDot (g, { pos, cy }, r, c, s.isMouseButtonDown() ? 1.0f : 0.7f);
+    g.setColour (col::bg);
     g.fillEllipse (pos - r, cy - r, r * 2, r * 2);
-    g.setColour (c);
-    g.fillEllipse (pos - r * 0.42f, cy - r * 0.42f, r * 0.84f, r * 0.84f);
+    g.setColour (c.brighter (0.2f));
+    g.drawEllipse (pos - r + 1.0f, cy - r + 1.0f, r * 2 - 2.0f, r * 2 - 2.0f, 2.0f);
 }
 
 void RovnoLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce::Colour&, bool over, bool down)
 {
-    auto r = b.getLocalBounds().toFloat().reduced (0.5f);
+    auto r = b.getLocalBounds().toFloat().reduced (1.5f);
     const bool primary = b.getProperties().getWithDefault ("primary", false);
-    if (primary)
-    {
-        g.setColour (col::accent.withAlpha (0.28f));
-        g.fillRoundedRectangle (r.expanded (2.0f), r.getHeight() / 2 + 2);
-        g.setGradientFill (juce::ColourGradient (col::accent, r.getX(), r.getY(), col::accent2, r.getRight(), r.getBottom(), false));
-        g.fillRoundedRectangle (r, r.getHeight() / 2);
-        if (over || down) { g.setColour (juce::Colours::white.withAlpha (down ? 0.20f : 0.12f)); g.fillRoundedRectangle (r, r.getHeight() / 2); }
-    }
-    else
-    {
-        g.setColour (down ? col::line : (over ? col::cardHi.brighter (0.10f) : col::cardHi));
-        g.fillRoundedRectangle (r, r.getHeight() / 2);
-        g.setColour (over ? col::faint.withAlpha (0.8f) : col::line);
-        g.drawRoundedRectangle (r, r.getHeight() / 2, 1.0f);
-    }
+    const juce::Colour c = primary ? col::accent : neoTint();
+    juce::Path p;
+    p.addRoundedRectangle (r, 10.0f);
+    if (over || down) juce::DropShadow (c.withAlpha (primary ? 0.45f : 0.30f), 10, { 0, 0 }).drawForPath (g, p);
+    g.setGradientFill (juce::ColourGradient (c.withAlpha (primary ? 0.30f : (down ? 0.20f : (over ? 0.14f : 0.06f))), 0, r.getY(),
+                                             c.withAlpha (primary ? 0.12f : 0.02f), 0, r.getBottom(), false));
+    g.fillPath (p);
+    g.setColour (primary ? c.withAlpha (0.95f) : (over ? c.withAlpha (0.85f) : juce::Colours::white.withAlpha (0.18f)));
+    g.strokePath (p, juce::PathStrokeType (1.2f));
 }
 
 void RovnoLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b, bool, bool)
 {
     const bool primary = b.getProperties().getWithDefault ("primary", false);
-    g.setColour (primary ? juce::Colour (0xff1a1206) : col::text);
+    g.setColour (primary ? col::accent.brighter (0.5f) : col::text);
     g.setFont (font (15.0f, 600));
     g.drawText (b.getButtonText(), b.getLocalBounds(), juce::Justification::centred, true);
 }
@@ -196,22 +183,21 @@ public:
     Switch() { setClickingTogglesState (true); setMouseCursor (juce::MouseCursor::PointingHandCursor); onStateChange = [this] { startTimerHz (60); }; }
     void paintButton (juce::Graphics& g, bool over, bool) override
     {
-        auto r = getLocalBounds().toFloat().reduced (3.0f);
+        auto r = getLocalBounds().toFloat().reduced (4.0f);
         const float e = easeOut (pos);
-        if (e > 0.02f)
-        {
-            g.setColour (onColour.withAlpha (0.22f * e));
-            g.fillRoundedRectangle (r.expanded (3.0f), r.getHeight() / 2 + 3.0f);
-        }
-        g.setColour (col::line.brighter (0.12f).interpolatedWith (onColour, e));
-        g.fillRoundedRectangle (r, r.getHeight() / 2);
-        if (over) { g.setColour (juce::Colours::white.withAlpha (0.07f)); g.fillRoundedRectangle (r, r.getHeight() / 2); }
-        const float d = r.getHeight() - 6.0f;
-        const float kx = r.getX() + 3.0f + pos * (r.getWidth() - d - 6.0f);
-        g.setColour (juce::Colours::black.withAlpha (0.30f));
+        const juce::Colour c = juce::Colours::white.withAlpha (0.28f).interpolatedWith (onColour, e);
+        juce::Path track;
+        track.addRoundedRectangle (r, r.getHeight() / 2);
+        if (e > 0.02f) juce::DropShadow (onColour.withAlpha (0.45f * e), 9, { 0, 0 }).drawForPath (g, track);
+        g.setGradientFill (juce::ColourGradient (onColour.withAlpha (0.30f * e), 0, r.getY(), onColour.withAlpha (0.08f * e), 0, r.getBottom(), false));
+        g.fillPath (track);
+        g.setColour (over && e < 0.5f ? c.brighter (0.4f) : c);
+        g.strokePath (track, juce::PathStrokeType (1.4f));
+        const float d = r.getHeight() - 8.0f;
+        const float kx = r.getX() + 4.0f + pos * (r.getWidth() - d - 8.0f);
+        if (e > 0.02f) glowDot (g, { kx + d / 2, r.getCentreY() }, d / 2, onColour, e * 0.8f);
+        g.setColour (juce::Colours::white.withAlpha (0.55f + 0.45f * e));
         g.fillEllipse (kx, r.getY() + 4.0f, d, d);
-        g.setColour (juce::Colours::white);
-        g.fillEllipse (kx, r.getY() + 3.0f, d, d);
     }
     void snap() { pos = getToggleState() ? 1.0f : 0.0f; repaint(); }
     juce::Colour onColour = col::accent;
@@ -250,25 +236,27 @@ public:
         {
             auto r = tileR (i);
             const bool active = items[i] != Kind::Unknown && now == items[i];   // what is playing in auto mode
-            drawCard (g, r, col::card.brighter (0.02f + hoverA[i] * 0.06f), 18.0f);
-            if (isAuto && active)
-            {
-                g.setColour (kindColour (items[i]).withAlpha (0.55f));
-                g.drawRoundedRectangle (r.reduced (0.5f), 18.0f, 1.4f);
-            }
+            g.setColour (juce::Colours::white.withAlpha (0.025f + hoverA[i] * 0.045f));
+            g.fillRoundedRectangle (r, 14.0f);
+            g.setColour (isAuto && active ? kindColour (items[i]).withAlpha (0.55f) : juce::Colours::white.withAlpha (0.075f + hoverA[i] * 0.06f));
+            g.drawRoundedRectangle (r.reduced (0.5f), 14.0f, 1.0f);
         }
-        // the gliding selection
+        // the gliding selection: a fill that rises from the bottom, a lit hairline and a glowing base
         {
             auto r = juce::Rectangle<float> (w * pillX, 0, w, (float) getHeight()).reduced (4.0f, 0.0f);
             juce::Path p;
-            p.addRoundedRectangle (r, 18.0f);
-            juce::DropShadow (pillColour.withAlpha (0.35f), 16, { 0, 3 }).drawForPath (g, p);
-            g.setColour (col::card);
+            p.addRoundedRectangle (r, 14.0f);
+            juce::DropShadow (pillColour.withAlpha (0.30f), 14, { 0, 0 }).drawForPath (g, p);
+            g.setColour (col::bg);
             g.fillPath (p);
-            g.setGradientFill (juce::ColourGradient (pillColour.withAlpha (0.30f), r.getX(), r.getY(), pillColour.withAlpha (0.10f), r.getX(), r.getBottom(), false));
+            g.setGradientFill (juce::ColourGradient (pillColour.withAlpha (0.02f), r.getX(), r.getY(), pillColour.withAlpha (0.30f), r.getX(), r.getBottom(), false));
             g.fillPath (p);
-            g.setColour (pillColour.withAlpha (0.95f));
-            g.strokePath (p, juce::PathStrokeType (1.8f));
+            g.setColour (pillColour.withAlpha (0.75f));
+            g.strokePath (p, juce::PathStrokeType (1.2f));
+            juce::Path base;
+            base.startNewSubPath (r.getX() + 16.0f, r.getBottom() - 1.0f);
+            base.lineTo (r.getRight() - 16.0f, r.getBottom() - 1.0f);
+            glowStroke (g, base, pillColour.brighter (0.2f), 2.0f, 1.3f);
         }
         for (size_t i = 0; i < items.size(); ++i)
         {
@@ -277,18 +265,20 @@ public:
             const float nearPill = juce::jlimit (0.0f, 1.0f, 1.0f - std::abs (pillX - (float) i));
             const bool active = k != Kind::Unknown && now == k;
             const juce::Colour kc = kindColour (k);
-            juce::Colour ic = col::dim.interpolatedWith (kc, nearPill);
+            juce::Colour ic = col::dim.interpolatedWith (kc.brighter (0.15f), nearPill);
             if (isAuto && active && nearPill < 0.5f) ic = kc;
             const float iconSize = 36.0f;
-            drawKindIcon (g, k, juce::Rectangle<float> (r.getCentreX() - iconSize / 2, r.getY() + 30.0f - hoverA[i] * 2.0f, iconSize, iconSize), ic, 2.2f);
+            const auto iconR = juce::Rectangle<float> (r.getCentreX() - iconSize / 2, r.getY() + 28.0f - hoverA[i] * 2.0f, iconSize, iconSize);
+            if (nearPill > 0.05f) glowDot (g, iconR.getCentre(), 11.0f, kc, nearPill * 0.55f);
+            drawKindIcon (g, k, iconR, ic, 2.0f);
             g.setColour (col::dim.interpolatedWith (col::text, juce::jmax (nearPill, hoverA[i] * 0.7f)));
             g.setFont (font (15.5f, nearPill > 0.5f ? 600 : 500));
-            g.drawText (kindName (k), r.withTop (r.getY() + 84.0f).withHeight (24.0f), juce::Justification::centred);
+            g.drawText (kindName (k), r.withTop (r.getY() + 82.0f).withHeight (24.0f), juce::Justification::centred);
             if (k == Kind::Unknown)
             {
                 g.setColour (col::faint);
                 g.setFont (font (13.0f));
-                g.drawText (L ("само", "automatic"), r.withTop (r.getY() + 106.0f).withHeight (20.0f), juce::Justification::centred);
+                g.drawText (L ("само", "automatic"), r.withTop (r.getY() + 104.0f).withHeight (20.0f), juce::Justification::centred);
             }
         }
     }
@@ -448,8 +438,7 @@ public:
         curve (shownPeaks, tops);
         g.setColour (base.withAlpha (live ? 0.28f : 0.10f));
         g.strokePath (tops, juce::PathStrokeType (1.0f));
-        g.setColour (base.brighter (0.25f).withAlpha (live ? 1.0f : 0.4f));
-        g.strokePath (line, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        glowStroke (g, line, base.brighter (0.25f).withAlpha (live ? 1.0f : 0.4f), 2.0f, live ? 1.0f : 0.0f);
 
         g.setColour (col::faint);
         g.setFont (font (12.5f, 500));
@@ -920,10 +909,24 @@ void MainComponent::paint (juce::Graphics& g)
     g.fillAll (col::bg);
     const auto& st = c.now();
     const juce::Colour kc = kcCur;
+    neoTint() = kc;
 
     // The mood of the current mode as a soft glow behind the header, plus a faint one low on the right.
     g.setGradientFill (juce::ColourGradient (kc.withAlpha (0.16f), 150.0f, -40.0f, kc.withAlpha (0.0f), 150.0f + 620.0f, 520.0f, true));
     g.fillRect (getLocalBounds());
+    if (gridImage.getWidth() != getWidth() || gridImage.getHeight() != getHeight())
+    {
+        // a faint dot grid, drawn once per size: the blueprint under the glass panels
+        gridImage = juce::Image (juce::Image::ARGB, getWidth(), getHeight(), true);
+        juce::Graphics gg (gridImage);
+        for (int y = 14; y < getHeight(); y += 28)
+            for (int x = 14; x < getWidth(); x += 28)
+            {
+                gg.setColour (juce::Colours::white.withAlpha (0.05f));
+                gg.fillRect ((float) x, (float) y, 1.5f, 1.5f);
+            }
+    }
+    g.drawImageAt (gridImage, 0, 0);
     g.setGradientFill (juce::ColourGradient (col::accent2.withAlpha (0.06f), (float) getWidth(), (float) getHeight(),
                                              col::accent2.withAlpha (0.0f), (float) getWidth() - 560.0f, (float) getHeight() - 240.0f, true));
     g.fillRect (getLocalBounds());
@@ -972,14 +975,14 @@ void MainComponent::paint (juce::Graphics& g)
     auto nr = nowR.reduced (20, 18);
     auto badge = nr.removeFromLeft (76).withHeight (76).toFloat();
     {
-        juce::Path bp;
-        bp.addRoundedRectangle (badge, 20.0f);
-        juce::DropShadow (kc.withAlpha (0.30f), 14, { 0, 2 }).drawForPath (g, bp);
-        g.setGradientFill (juce::ColourGradient (kc.withAlpha (0.34f), badge.getX(), badge.getY(), kc.withAlpha (0.12f), badge.getRight(), badge.getBottom(), false));
-        g.fillPath (bp);
-        g.setColour (kc.withAlpha (0.45f));
-        g.strokePath (bp, juce::PathStrokeType (1.0f));
-        drawKindIcon (g, st.kind, badge.reduced (19.0f), kc.brighter (0.2f), 2.4f);
+        const auto mid = badge.getCentre();
+        glowDot (g, mid, 28.0f, kc, 0.8f);
+        g.setColour (col::bg.withAlpha (0.8f));
+        g.fillEllipse (badge.reduced (4.0f));
+        juce::Path ring;
+        ring.addEllipse (badge.reduced (4.0f));
+        glowStroke (g, ring, kc, 1.6f, 1.0f);
+        drawKindIcon (g, st.kind, badge.reduced (23.0f), kc.brighter (0.25f), 2.0f);
     }
     nr.removeFromLeft (18);
     g.setColour (col::text);

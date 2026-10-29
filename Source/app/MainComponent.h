@@ -86,7 +86,7 @@ private:
     bool eqOpen = false, syncing = false, eqHover = false;
     float eqAnim = 0.0f;                 // 0 closed .. 1 open (chevron, fade of the plot)
     juce::Colour kcCur = col::accent;    // the mode colour, eased toward the current mode's
-    juce::Image logo;
+    juce::Image logo, gridImage;
     int graphTick = 0;
     juce::Rectangle<int> headerR, bannerR, nowR, modesR, loudR, soundR, eqR, footR, eqHeadR;
 };
