@@ -35,7 +35,7 @@ private:
         auto& desktop = juce::Desktop::getInstance();
         for (int i = 0; i < desktop.getNumComponents(); ++i)
             if (auto* c = desktop.getComponent (i))
-                if (c->getName() == "menu" && ! c->getProperties().contains ("evenlyFaded"))
+                if (c->getName() == "menu" && c->isVisible() && ! c->getProperties().contains ("evenlyFaded"))   // not one that is closing: fadeIn would show it again
                 {
                     c->getProperties().set ("evenlyFaded", true);
                     desktop.getAnimator().fadeIn (c, 120);

@@ -329,25 +329,28 @@ private:
 };
 
 // ---- the output chooser: a pill that opens the rounded menu -----------------------------------
-class DeviceBox : public juce::Component
+class DeviceBox : public juce::Component, private FrameTimer
 {
 public:
     std::function<void (int)> onPick;
-    DeviceBox() { setMouseCursor (juce::MouseCursor::PointingHandCursor); }
+    DeviceBox() : FrameTimer (this) { setMouseCursor (juce::MouseCursor::PointingHandCursor); }
     void set (const juce::StringArray& labels, int selected) { items = labels; sel = selected; repaint(); }
     void paint (juce::Graphics& g) override
     {
-        auto r = getLocalBounds().toFloat().reduced (0.5f);
-        g.setColour (open ? col::line : (over ? col::cardHi.brighter (0.10f) : col::cardHi));
-        g.fillRoundedRectangle (r, r.getHeight() / 2);
-        g.setColour (open ? col::accent.withAlpha (0.8f) : (over ? col::faint.withAlpha (0.8f) : col::line));
-        g.drawRoundedRectangle (r, r.getHeight() / 2, 1.0f);
+        auto r = getLocalBounds().toFloat().reduced (0.5f + pressA * 1.0f);
+        const float rad = r.getHeight() / 2;
+        g.setColour (col::cardHi.brighter (0.10f * hoverA + 0.04f * openA));
+        g.fillRoundedRectangle (r, rad);
+        // the rim: grey, a lighter grey under the mouse, the accent while the list is open
+        const juce::Colour rim = col::line.interpolatedWith (col::faint, hoverA * 0.8f).interpolatedWith (col::accent, openA * 0.85f);
+        g.setColour (rim);
+        g.drawRoundedRectangle (r, rad, 1.0f + openA * 0.4f);
         // a small speaker
         const float ix = r.getX() + 20.0f, iy = r.getCentreY();
         juce::Path sp;
         sp.startNewSubPath (ix - 6, iy - 3); sp.lineTo (ix - 2, iy - 3); sp.lineTo (ix + 3, iy - 7);
         sp.lineTo (ix + 3, iy + 7); sp.lineTo (ix - 2, iy + 3); sp.lineTo (ix - 6, iy + 3); sp.closeSubPath();
-        g.setColour (col::dim);
+        g.setColour (col::dim.interpolatedWith (col::text, hoverA * 0.6f));
         g.fillPath (sp);
         juce::Path wave;
         wave.addCentredArc (ix + 3, iy, 6, 6, 0, 0.9f, 2.2f, true);
@@ -356,35 +359,60 @@ public:
         g.setFont (font (15.0f, 500));
         const juce::String t = sel >= 0 && sel < items.size() ? items[sel] : L ("Выберите выход", "Pick an output");
         g.drawText (t, r.withTrimmedLeft (42).withTrimmedRight (40), juce::Justification::centredLeft, true);
+        // the chevron turns over while the list is open
         juce::Path arrow;
-        const float ax = r.getRight() - 22.0f, ay = r.getCentreY();
-        arrow.startNewSubPath (ax - 5, ay - 2.5f); arrow.lineTo (ax, ay + 2.5f); arrow.lineTo (ax + 5, ay - 2.5f);
-        g.setColour (col::dim);
-        g.strokePath (arrow, juce::PathStrokeType (1.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        arrow.startNewSubPath (-5, -2.5f); arrow.lineTo (0, 2.5f); arrow.lineTo (5, -2.5f);
+        g.setColour (col::dim.interpolatedWith (col::text, juce::jmax (hoverA * 0.6f, openA)));
+        g.strokePath (arrow, juce::PathStrokeType (1.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded),
+                      juce::AffineTransform::rotation (easeOut (openA) * juce::MathConstants<float>::pi).translated (r.getRight() - 22.0f, r.getCentreY()));
     }
-    void mouseEnter (const juce::MouseEvent&) override { over = true; repaint(); }
-    void mouseExit (const juce::MouseEvent&) override { over = false; repaint(); }
+    void mouseEnter (const juce::MouseEvent&) override { over = true; startTimerHz (60); }
+    void mouseExit (const juce::MouseEvent&) override { over = false; startTimerHz (60); }
+    void mouseDown (const juce::MouseEvent&) override
+    {
+        // A click on the box while its list is open first closes the list (JUCE does that on the mouse-down);
+        // the mouse-up that follows must then not open it again.
+        openOnPress = open;
+        down = true;
+        startTimerHz (60);
+    }
     void mouseUp (const juce::MouseEvent& e) override
     {
-        if (! contains (e.getPosition()) || items.isEmpty()) return;
+        down = false;
+        startTimerHz (60);
+        if (openOnPress || ! contains (e.getPosition()) || items.isEmpty()) return;
         juce::PopupMenu m;
         m.setLookAndFeel (&getLookAndFeel());
         for (int i = 0; i < items.size(); ++i) m.addItem (i + 1, items[i], true, i == sel);
         open = true;
-        repaint();
-        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMinimumWidth (getWidth()).withStandardItemHeight (40),
+        startTimerHz (60);
+        m.showMenuAsync (juce::PopupMenu::Options().withTargetScreenArea (getScreenBounds().translated (0, 4)).withMinimumWidth (getWidth()).withStandardItemHeight (40),
                          [safe = juce::Component::SafePointer<DeviceBox> (this)] (int r)
                          {
                              if (! safe) return;
                              safe->open = false;
-                             safe->repaint();
+                             safe->startTimerHz (60);
                              if (r > 0 && safe->onPick) safe->onPick (r - 1);
                          });
     }
 private:
+    void timerCallback() override
+    {
+        const float th = over ? 1.0f : 0.0f, to = open ? 1.0f : 0.0f, tp = down ? 1.0f : 0.0f;
+        hoverA += (th - hoverA) * rate (dt(), 18.0f);
+        openA += (to - openA) * rate (dt(), 16.0f);
+        pressA += (tp - pressA) * rate (dt(), 32.0f);
+        if (std::abs (th - hoverA) < 0.01f && std::abs (to - openA) < 0.01f && std::abs (tp - pressA) < 0.01f)
+        {
+            hoverA = th; openA = to; pressA = tp;
+            stopTimer();
+        }
+        repaint();
+    }
     juce::StringArray items;
     int sel = -1;
-    bool over = false, open = false;
+    bool over = false, open = false, down = false, openOnPress = false;
+    float hoverA = 0, openA = 0, pressA = 0;
 };
 
 // ---- the spectrum of what is coming in, third octaves (50 Hz .. 16 kHz) ------------------------
