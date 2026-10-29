@@ -59,7 +59,6 @@ void RovnoLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& b,
     const juce::Colour c = primary ? col::accent : neoTint();
     juce::Path p;
     p.addRoundedRectangle (r, 10.0f);
-    if (over || down) juce::DropShadow (c.withAlpha (primary ? 0.45f : 0.30f), 10, { 0, 0 }).drawForPath (g, p);
     g.setGradientFill (juce::ColourGradient (c.withAlpha (primary ? 0.30f : (down ? 0.20f : (over ? 0.14f : 0.06f))), 0, r.getY(),
                                              c.withAlpha (primary ? 0.12f : 0.02f), 0, r.getBottom(), false));
     g.fillPath (p);
@@ -266,14 +265,10 @@ public:
             softGlow (g, p, pillColour, 0.30f, 12.0f);
             g.setColour (col::bg);
             g.fillPath (p);
-            g.setGradientFill (juce::ColourGradient (pillColour.withAlpha (0.02f), r.getX(), r.getY(), pillColour.withAlpha (0.30f), r.getX(), r.getBottom(), false));
+            g.setGradientFill (juce::ColourGradient (pillColour.withAlpha (0.02f), r.getX(), r.getY(), pillColour.withAlpha (0.20f), r.getX(), r.getBottom(), false));
             g.fillPath (p);
             g.setColour (pillColour.withAlpha (0.75f));
             g.strokePath (p, juce::PathStrokeType (1.2f));
-            juce::Path base;
-            base.startNewSubPath (r.getX() + 16.0f, r.getBottom() - 1.0f);
-            base.lineTo (r.getRight() - 16.0f, r.getBottom() - 1.0f);
-            glowStroke (g, base, pillColour, 2.0f, 0.8f);
         }
         for (size_t i = 0; i < items.size(); ++i)
         {
@@ -469,11 +464,6 @@ public:
         curve (shownPeaks, tops);
         strokeFaded (tops, 1.0f, base, live ? 0.24f : 0.08f);
         const juce::Colour lineColour = base.brighter (0.15f);
-        if (live)
-        {
-            strokeFaded (line, 7.0f, lineColour, 0.035f);
-            strokeFaded (line, 4.0f, lineColour, 0.07f);
-        }
         strokeFaded (line, 2.0f, lineColour, live ? 0.95f : 0.35f);
 
         g.setColour (col::faint);
@@ -596,8 +586,6 @@ public:
                     fill.closeSubPath();
                     g.setGradientFill (juce::ColourGradient (oc.withAlpha (0.30f), 0, r.getY(), oc.withAlpha (0.0f), 0, r.getBottom(), false));
                     g.fillPath (fill);
-                    g.setColour (oc.withAlpha (0.25f));
-                    g.strokePath (p, juce::PathStrokeType (5.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
                     g.setColour (oc);
                     g.strokePath (p, juce::PathStrokeType (2.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
                 }
@@ -673,8 +661,6 @@ public:
         fill.closeSubPath();
         g.setGradientFill (juce::ColourGradient (colour.withAlpha (0.20f), 0, r.getY(), colour.withAlpha (0.02f), 0, r.getBottom(), false));
         g.fillPath (fill);
-        g.setColour (colour.withAlpha (0.25f));
-        g.strokePath (p, juce::PathStrokeType (6.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         g.setColour (colour);
         g.strokePath (p, juce::PathStrokeType (2.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         for (int i = 0; i < 10; ++i)

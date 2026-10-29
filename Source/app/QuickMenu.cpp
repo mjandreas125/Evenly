@@ -6,7 +6,6 @@ namespace rv::ui
 namespace
 {
 const Kind kTiles[5] = { Kind::Unknown, Kind::Music, Kind::Speech, Kind::Movie, Kind::Game };
-constexpr double kAutoApplyMs = 1300;   // how long the lit mode waits before it is applied by itself
 constexpr int kMargin = 24;             // room for the glow around the panel
 } // namespace
 
@@ -66,6 +65,8 @@ QuickMenu::QuickMenu (Controller& controller) : c (controller)
 
 QuickMenu::~QuickMenu() = default;
 
+bool QuickMenu::altDown() { return (GetAsyncKeyState (VK_MENU) & 0x8000) != 0; }
+
 int QuickMenu::currentIndex() const
 {
     if (c.autoMode()) return 0;
@@ -107,6 +108,8 @@ void QuickMenu::show()
     outSince = nowMs();
     lastMouse = juce::Desktop::getMousePosition();
     flash = 0;
+    applying = false;
+    shownAt = nowMs();
     glow.fill (0);
     if (! isOnDesktop())
         addToDesktop (juce::ComponentPeer::windowIsTemporary | juce::ComponentPeer::windowIsSemiTransparent | juce::ComponentPeer::windowIgnoresKeyPresses);
@@ -125,6 +128,8 @@ void QuickMenu::hide()
 
 void QuickMenu::choose (int index)
 {
+    if (applying) return;
+    applying = true;
     focus = index;
     autoApply = false;
     if (kTiles[index] == Kind::Unknown) c.setAuto(); else c.pick (kTiles[index]);
@@ -149,9 +154,8 @@ void QuickMenu::timerCallback()
         glow[i] += (t - glow[i]) * rate (dt(), 20.0f);
     }
     flash = std::max (0.0f, flash - dt() * 3.0f);
-    if (shown && autoApply && nowMs() - lastTap >= kAutoApplyMs) choose (focus);
-    // opened and then left alone with the mouse outside: close by itself
-    if (shown && ! autoApply && ! keyboardUsed && ! mouseInside && nowMs() - outSince > 1200) hide();
+    // The menu lives while Alt is held: letting go applies the lit mode and closes it (a quick tap shows it for a moment).
+    if (shown && ! applying && ! altDown() && nowMs() - shownAt > 260) choose (focus);
     if (! shown && anim <= 0.0f)
     {
         stopTimer();
@@ -227,13 +231,6 @@ void QuickMenu::paint (juce::Graphics& g)
             g.fillPath (tp);
             g.setColour (kc.withAlpha (0.8f * lit));
             g.strokePath (tp, juce::PathStrokeType (1.3f));
-            // the countdown: the base line fills up; when it is full the mode is applied
-            float fill = 1.0f;
-            if (shown && autoApply) fill = juce::jlimit (0.0f, 1.0f, (float) ((nowMs() - lastTap) / kAutoApplyMs));
-            juce::Path base;
-            base.startNewSubPath (t.getX() + 16, t.getBottom() - 1.0f);
-            base.lineTo (t.getX() + 16 + (t.getWidth() - 32) * fill, t.getBottom() - 1.0f);
-            glowStroke (g, base, kc, 2.0f, 0.8f * lit);
         }
         g.setColour ((current ? kc.withAlpha (0.55f) : juce::Colours::white.withAlpha (0.09f)).withMultipliedAlpha (te * (1.0f - lit * 0.6f)));
         g.drawRoundedRectangle (t.reduced (0.5f), 14.0f, 1.0f);

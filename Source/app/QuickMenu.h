@@ -32,14 +32,15 @@ private:
     int tileAt (juce::Point<int>) const;
     juce::Rectangle<float> tile (int i) const;
     int currentIndex() const;
+    static bool altDown();
     static double nowMs() { return juce::Time::getMillisecondCounterHiRes(); }
 
     Controller& c;
     int focus = 0;
-    bool shown = false, keyboardUsed = false, autoApply = false, mouseInside = false;
+    bool shown = false, keyboardUsed = false, autoApply = false, mouseInside = false, applying = false;
     float anim = 0.0f;               // 0 hidden .. 1 shown (eased when painted)
     float flash = 0.0f;              // the chosen tile blinks once
-    double lastTap = 0, outSince = 0, lastFrame = 0;
+    double lastTap = 0, outSince = 0, lastFrame = 0, shownAt = 0;
     float dt() const { return frameDt; }
     float frameDt = 1.0f / 60.0f;
     juce::Point<int> lastMouse;
