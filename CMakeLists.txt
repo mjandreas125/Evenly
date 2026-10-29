@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.22)
+﻿cmake_minimum_required(VERSION 3.22)
 project(Rovno VERSION 0.9.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -70,3 +70,4 @@ target_link_libraries(rovno_fakefx PRIVATE advapi32)
 # --- install / remove / talk to the effect ----------------------------------------------------
 add_executable(rovno_ctl Source/tools/CtlMain.cpp)
 target_link_libraries(rovno_ctl PRIVATE advapi32 ole32 oleaut32)
+

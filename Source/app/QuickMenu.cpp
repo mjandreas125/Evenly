@@ -38,11 +38,11 @@ struct QuickMenu::Hotkey
                 if (down)
                 {
                     const bool alt = (k->flags & LLKHF_ALTDOWN) != 0, ctrl = (GetAsyncKeyState (VK_CONTROL) & 0x8000) != 0;   // AltGr counts as Ctrl
-                    if (alt && ! ctrl && ! self->keyHeld) { self->keyHeld = true; self->onTap(); }
+                    if (alt && ! ctrl && ! self->keyHeld) { self->keyHeld = true; juce::MessageManager::callAsync ([] { if (auto* h = self) h->onTap(); }); }   // never do work inside the hook: Windows drops a hook that is slow
                 }
                 else if (up) self->keyHeld = false;
             }
-            else if ((k->vkCode == VK_LMENU || k->vkCode == VK_RMENU) && up) self->onAltUp();
+            else if ((k->vkCode == VK_LMENU || k->vkCode == VK_RMENU) && up) juce::MessageManager::callAsync ([] { if (auto* h = self) h->onAltUp(); });
             else if (k->vkCode == VK_ESCAPE && down && self->onEsc()) return 1;   // closes the panel; swallowed
         }
         return CallNextHookEx (nullptr, code, w, l);
@@ -61,7 +61,7 @@ QuickMenu::QuickMenu (Controller& controller) : c (controller)
     setAlwaysOnTop (true);
     setMouseCursor (juce::MouseCursor::PointingHandCursor);
     hotkey = std::make_unique<Hotkey> ([this] { keyTapped(); }, [this] { altReleased(); },
-                                       [this] { if (! shown) return false; escapePressed(); return true; });
+                                       [this] { if (! shown) return false; juce::MessageManager::callAsync ([this] { escapePressed(); }); return true; });
 }
 
 QuickMenu::~QuickMenu() = default;
@@ -84,7 +84,7 @@ void QuickMenu::keyTapped()
     else focus = (focus + 1) % 5;
     keyboardUsed = true;
     autoApply = true;
-    startTimerHz (60);
+    startTimerHz (120);
     repaint();
 }
 
@@ -113,14 +113,14 @@ void QuickMenu::show()
     setVisible (true);
     toFront (false);
     shown = true;
-    startTimerHz (60);
+    startTimerHz (120);
 }
 
 void QuickMenu::hide()
 {
     shown = false;
     autoApply = false;
-    startTimerHz (60);
+    startTimerHz (120);
 }
 
 void QuickMenu::choose (int index)
@@ -130,27 +130,33 @@ void QuickMenu::choose (int index)
     if (kTiles[index] == Kind::Unknown) c.setAuto(); else c.pick (kTiles[index]);
     flash = 1.0f;
     juce::Timer::callAfterDelay (200, [safe = juce::Component::SafePointer<QuickMenu> (this)] { if (safe) safe->hide(); });
-    startTimerHz (60);
+    startTimerHz (120);
 }
 
 void QuickMenu::timerCallback()
 {
+    {
+        const double n = nowMs();
+        frameDt = lastFrame > 0 ? juce::jlimit (0.001f, 0.05f, (float) ((n - lastFrame) / 1000.0)) : 1.0f / 60.0f;
+        lastFrame = n;
+    }
     const float target = shown ? 1.0f : 0.0f;
-    const float step = shown ? 0.10f : 0.14f;
+    const float step = dt() * (shown ? 6.5f : 9.0f);
     anim = anim < target ? std::min (target, anim + step) : std::max (target, anim - step);
     for (size_t i = 0; i < glow.size(); ++i)
     {
         const float t = (int) i == focus && shown ? 1.0f : 0.0f;
-        glow[i] += (t - glow[i]) * 0.3f;
+        glow[i] += (t - glow[i]) * rate (dt(), 20.0f);
     }
-    flash = std::max (0.0f, flash - 0.05f);
+    flash = std::max (0.0f, flash - dt() * 3.0f);
     if (shown && autoApply && nowMs() - lastTap >= kAutoApplyMs) choose (focus);
     // opened and then left alone with the mouse outside: close by itself
     if (shown && ! autoApply && ! keyboardUsed && ! mouseInside && nowMs() - outSince > 1200) hide();
     if (! shown && anim <= 0.0f)
     {
         stopTimer();
-        if (isOnDesktop()) removeFromDesktop();
+        lastFrame = 0;
+        if (isOnDesktop()) removeFromDesktop();   // the window is made anew for every use (reusing a hidden layered window crashed)
     }
     setAlpha (juce::jlimit (0.0f, 1.0f, anim * 1.2f));
     repaint();
@@ -178,7 +184,13 @@ void QuickMenu::paint (juce::Graphics& g)
     auto r = bounds.reduced ((float) kMargin);
     juce::Path panel;
     panel.addRoundedRectangle (r, 18.0f);
-    juce::DropShadow (juce::Colours::black.withAlpha (0.6f), 22, { 0, 6 }).drawForPath (g, panel);
+    if (shadowCache.getWidth() != getWidth() || shadowCache.getHeight() != getHeight())
+    {
+        shadowCache = juce::Image (juce::Image::ARGB, getWidth(), getHeight(), true);
+        juce::Graphics gs (shadowCache);
+        juce::DropShadow (juce::Colours::black.withAlpha (0.6f), 22, { 0, 6 }).drawForPath (gs, panel);
+    }
+    g.drawImageAt (shadowCache, 0, 0);
     g.setColour (juce::Colour (0xf20d0f13));
     g.fillPath (panel);
     g.setColour (juce::Colours::white.withAlpha (0.10f));
@@ -208,7 +220,7 @@ void QuickMenu::paint (juce::Graphics& g)
         {
             juce::Path tp;
             tp.addRoundedRectangle (t, 14.0f);
-            juce::DropShadow (kc.withAlpha (0.35f * lit * te), 14, { 0, 0 }).drawForPath (g, tp);
+            softGlow (g, tp, kc, 0.35f * lit * te, 12.0f);
             g.setColour (col::bg.withAlpha (lit * te));
             g.fillPath (tp);
             g.setGradientFill (juce::ColourGradient (kc.withAlpha (0.02f * lit), t.getX(), t.getY(), kc.withAlpha (0.30f * lit), t.getX(), t.getBottom(), false));

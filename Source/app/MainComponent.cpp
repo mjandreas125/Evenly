@@ -120,21 +120,33 @@ void RovnoLookAndFeel::drawAlertBox (juce::Graphics& g, juce::AlertWindow& alert
 
 void RovnoLookAndFeel::drawPopupMenuBackground (juce::Graphics& g, int w, int h)
 {
-    const auto panel = juce::Rectangle<float> (0, 0, (float) w, (float) h).reduced (10.0f);
+    // The same liquid glass as the window: coloured light behind, then tint, sheen, lip and a lit rim.
+    const auto panel = juce::Rectangle<float> (0, 0, (float) w, (float) h).reduced (8.0f);
     juce::Path p;
     p.addRoundedRectangle (panel, 16.0f);
-    juce::DropShadow (juce::Colours::black.withAlpha (0.55f), 14, { 0, 5 }).drawForPath (g, p);
-    g.setGradientFill (juce::ColourGradient (col::cardHi.brighter (0.08f), 0, panel.getY(), col::cardHi, 0, panel.getBottom(), false));
-    g.fillPath (p);
-    g.setColour (juce::Colours::white.withAlpha (0.12f));
-    g.strokePath (p, juce::PathStrokeType (1.0f));
+    juce::DropShadow (juce::Colours::black.withAlpha (0.60f), 16, { 0, 6 }).drawForPath (g, p);
+    {
+        juce::Graphics::ScopedSaveState s (g);
+        g.reduceClipRegion (p);
+        g.setColour (juce::Colour (0xff06080b));
+        g.fillPath (p);
+        auto light = [&] (juce::Point<float> c, float radius, juce::Colour colour, float alpha)
+        {
+            g.setGradientFill (juce::ColourGradient (colour.withAlpha (alpha), c.x, c.y, colour.withAlpha (0.0f), c.x + radius, c.y, true));
+            g.fillEllipse (c.x - radius, c.y - radius, radius * 2, radius * 2);
+        };
+        light ({ panel.getX(), panel.getY() }, (float) w * 0.8f, col::accent, 0.42f);
+        light ({ panel.getRight(), panel.getBottom() }, (float) w * 0.8f, juce::Colour (0xffa38dff), 0.38f);
+        light ({ panel.getRight(), panel.getY() }, (float) w * 0.5f, juce::Colour (0xff2fd3b3), 0.20f);
+    }
+    GlassBackdrop::paintFinish (g, panel, 16.0f);
 }
 
 void RovnoLookAndFeel::getIdealPopupMenuItemSize (const juce::String& text, bool isSeparator, int, int& idealWidth, int& idealHeight)
 {
-    if (isSeparator) { idealWidth = 50; idealHeight = 13; return; }
-    idealHeight = 40;
-    idealWidth = juce::GlyphArrangement::getStringWidthInt (getPopupMenuFont(), text) + 98;
+    if (isSeparator) { idealWidth = 50; idealHeight = 11; return; }
+    idealHeight = 36;
+    idealWidth = juce::GlyphArrangement::getStringWidthInt (getPopupMenuFont(), text) + 80;
 }
 
 void RovnoLookAndFeel::drawPopupMenuItem (juce::Graphics& g, const juce::Rectangle<int>& area, bool isSeparator, bool isActive,
@@ -144,11 +156,11 @@ void RovnoLookAndFeel::drawPopupMenuItem (juce::Graphics& g, const juce::Rectang
     if (isSeparator)
     {
         g.setColour (juce::Colours::white.withAlpha (0.10f));
-        g.fillRect (area.reduced (26, 0).withHeight (1).withY (area.getCentreY()));
+        g.fillRect (area.reduced (20, 0).withHeight (1).withY (area.getCentreY()));
         return;
     }
     // JUCE gives every item the full width of the window; the panel is drawn 10 px inside it
-    auto r = area.reduced (16, 2).toFloat();
+    auto r = area.reduced (12, 2).toFloat();
     const juce::Colour base = textColour ? *textColour : col::text;
     if (isHighlighted && isActive)
     {
@@ -157,11 +169,11 @@ void RovnoLookAndFeel::drawPopupMenuItem (juce::Graphics& g, const juce::Rectang
     }
     g.setColour (isActive ? base : base.withAlpha (0.38f));
     g.setFont (getPopupMenuFont());
-    g.drawText (text, r.withTrimmedLeft (38).withTrimmedRight (14), juce::Justification::centredLeft, true);
+    g.drawText (text, r.withTrimmedLeft (34).withTrimmedRight (12), juce::Justification::centredLeft, true);
     if (isTicked)
     {
         juce::Path t;
-        const float cx = r.getX() + 19.0f, cy = r.getCentreY();
+        const float cx = r.getX() + 17.0f, cy = r.getCentreY();
         t.startNewSubPath (cx - 6, cy);
         t.lineTo (cx - 1.5f, cy + 4.5f);
         t.lineTo (cx + 6.5f, cy - 5);
@@ -179,11 +191,11 @@ void RovnoLookAndFeel::drawPopupMenuItem (juce::Graphics& g, const juce::Rectang
 }
 
 // ---- switch ----------------------------------------------------------------------------------
-class Switch : public juce::ToggleButton, private juce::Timer
+class Switch : public juce::ToggleButton, private FrameTimer
 {
 public:
     static constexpr int kGlow = 12;   // place the switch with bounds().expanded (kGlow)
-    Switch() { setClickingTogglesState (true); setMouseCursor (juce::MouseCursor::PointingHandCursor); onStateChange = [this] { startTimerHz (60); }; }
+    Switch() : FrameTimer (this) { setClickingTogglesState (true); setMouseCursor (juce::MouseCursor::PointingHandCursor); onStateChange = [this] { startTimerHz (60); }; }
     void paintButton (juce::Graphics& g, bool over, bool) override
     {
         auto r = getLocalBounds().toFloat().reduced (kGlow);   // the rest of the bounds is for the glow
@@ -191,7 +203,7 @@ public:
         const juce::Colour c = juce::Colours::white.withAlpha (0.28f).interpolatedWith (onColour, e);
         juce::Path track;
         track.addRoundedRectangle (r, r.getHeight() / 2);
-        if (e > 0.02f) juce::DropShadow (onColour.withAlpha (0.45f * e), 9, { 0, 0 }).drawForPath (g, track);
+        if (e > 0.02f) softGlow (g, track, onColour, 0.45f * e, 9.0f);
         g.setGradientFill (juce::ColourGradient (onColour.withAlpha (0.30f * e), 0, r.getY(), onColour.withAlpha (0.08f * e), 0, r.getBottom(), false));
         g.fillPath (track);
         g.setColour (over && e < 0.5f ? c.brighter (0.4f) : c);
@@ -208,7 +220,7 @@ private:
     void timerCallback() override
     {
         const float target = getToggleState() ? 1.0f : 0.0f;
-        pos += (target - pos) * 0.32f;
+        pos += (target - pos) * rate (dt(), 22.0f);
         if (std::abs (target - pos) < 0.01f) { pos = target; stopTimer(); }
         repaint();
     }
@@ -216,12 +228,12 @@ private:
 };
 
 // ---- the five modes: one pill glides to the chosen tile ----------------------------------------
-class ModeBar : public juce::Component, private juce::Timer
+class ModeBar : public juce::Component, private FrameTimer
 {
 public:
     std::function<void (Kind)> onPick;   // Kind::Unknown = auto
     static constexpr int kGlow = 18;   // place the bar with bounds().expanded (kGlow)
-    ModeBar() { setMouseCursor (juce::MouseCursor::PointingHandCursor); startTimerHz (60); }
+    ModeBar() : FrameTimer (this) { setMouseCursor (juce::MouseCursor::PointingHandCursor); startTimerHz (60); }
     void set (bool autoOn, Kind current)
     {
         isAuto = autoOn;
@@ -251,7 +263,7 @@ public:
             auto r = juce::Rectangle<float> (inner.getX() + w * pillX, inner.getY(), w, inner.getHeight()).reduced (4.0f, 0.0f);
             juce::Path p;
             p.addRoundedRectangle (r, 14.0f);
-            juce::DropShadow (pillColour.withAlpha (0.30f), 14, { 0, 0 }).drawForPath (g, p);
+            softGlow (g, p, pillColour, 0.30f, 12.0f);
             g.setColour (col::bg);
             g.fillPath (p);
             g.setGradientFill (juce::ColourGradient (pillColour.withAlpha (0.02f), r.getX(), r.getY(), pillColour.withAlpha (0.30f), r.getX(), r.getBottom(), false));
@@ -300,13 +312,13 @@ private:
         if (! isShowing()) return;
         bool moving = false;
         const float tp = (float) selIndex;
-        if (std::abs (tp - pillX) > 0.002f) { pillX += (tp - pillX) * 0.22f; moving = true; } else pillX = tp;
+        if (std::abs (tp - pillX) > 0.002f) { pillX += (tp - pillX) * rate (dt(), 14.0f); moving = true; } else pillX = tp;
         const juce::Colour tc = kindColour (order()[(size_t) selIndex]);
-        if (pillColour != tc) { pillColour = lerpColour (pillColour, tc, 0.2f); if (pillColour.getARGB() == tc.getARGB()) pillColour = tc; moving = true; }
+        if (pillColour != tc) { pillColour = lerpColour (pillColour, tc, rate (dt(), 12.0f)); if (pillColour.getARGB() == tc.getARGB()) pillColour = tc; moving = true; }
         for (int i = 0; i < 5; ++i)
         {
             const float t = hover == i ? 1.0f : 0.0f;
-            if (std::abs (t - hoverA[(size_t) i]) > 0.01f) { hoverA[(size_t) i] += (t - hoverA[(size_t) i]) * 0.3f; moving = true; }
+            if (std::abs (t - hoverA[(size_t) i]) > 0.01f) { hoverA[(size_t) i] += (t - hoverA[(size_t) i]) * rate (dt(), 16.0f); moving = true; }
         }
         if (moving) repaint();
     }
@@ -383,10 +395,10 @@ private:
 // ---- the spectrum of what is coming in, third octaves (50 Hz .. 16 kHz) ------------------------
 // The Controller rises at once and sinks slowly; this view eases a little further at 60 fps so the
 // bars move like a meter, and a thin mark above each bar keeps its recent top for a moment.
-class Spectrum : public juce::Component, private juce::Timer
+class Spectrum : public juce::Component, private FrameTimer
 {
 public:
-    Spectrum() { startTimerHz (60); }
+    Spectrum() : FrameTimer (this) { startTimerHz (60); }
     void set (const std::array<float, (size_t) kBands>& b, const std::array<float, (size_t) kBands>& p, juce::Colour c, bool on)
     {
         target = b;
@@ -403,7 +415,7 @@ public:
         // ordinary content sits between -50 and -10, so this window fills the plot without pinning
         // it to the top.
         const float lo = -66.0f, hi = -6.0f;
-        auto yOf = [&] (float db) { return r.getBottom() - juce::jlimit (0.0f, 1.0f, (db - lo) / (hi - lo)) * (r.getHeight() - 4.0f) - 1.0f; };
+        auto yOf = [&] (float db) { return r.getBottom() - juce::jlimit (0.0f, 1.0f, (db - lo) / (hi - lo)) * (r.getHeight() - 14.0f) - 1.0f; };
         const float step = r.getWidth() / (float) kBands;
         auto xOf = [&] (int i) { return r.getX() + step * ((float) i + 0.5f); };
         const juce::Colour base = live ? colour : col::dim;
@@ -458,8 +470,8 @@ private:
         bool changed = false;
         for (size_t i = 0; i < (size_t) kBands; ++i)
         {
-            const float a = shown[i] + (target[i] - shown[i]) * 0.45f;
-            const float b = shownPeaks[i] + (targetPeaks[i] - shownPeaks[i]) * 0.35f;
+            const float a = shown[i] + (target[i] - shown[i]) * rate (dt(), 38.0f);
+            const float b = shownPeaks[i] + (targetPeaks[i] - shownPeaks[i]) * rate (dt(), 26.0f);
             if (std::abs (a - shown[i]) > 0.02f || std::abs (b - shownPeaks[i]) > 0.02f) changed = true;
             shown[i] = a;
             shownPeaks[i] = b;
@@ -488,7 +500,7 @@ public:
     void paint (juce::Graphics& g) override
     {
         auto all = getLocalBounds().toFloat();
-        auto r = all.withTrimmedLeft (34.0f).withTrimmedBottom (20.0f);
+        auto r = all.withTrimmedLeft (34.0f).withTrimmedBottom (20.0f).withTrimmedTop (8.0f);
         const float lo = -42.0f, hi = -4.0f;
         auto yOf = [&] (float v) { return r.getBottom() - (juce::jlimit (lo, hi, v) - lo) / (hi - lo) * r.getHeight(); };
         // scale
@@ -685,17 +697,18 @@ private:
 class EqPanel : public juce::Component
 {
 public:
+    static constexpr int M = 30;   // room around the sheet for its shadow: the bounds are M bigger on every side
     std::function<void()> onToggle;
     const GlassBackdrop* glass = nullptr;   // the main window's glass, for the pane's own fill
     float anim = 0.0f;            // 0 closed .. 1 open, set by the main component
     bool open = false;
     void paint (juce::Graphics& g) override
     {
-        const auto r = getLocalBounds().toFloat();
+        const auto r = getLocalBounds().reduced (M).toFloat();
         if (glass != nullptr && glass->scene.isValid()) glass->paintLive (g, r, getPosition());
         else { g.setColour (col::bg.brighter (0.035f)); g.fillRoundedRectangle (r, 14.0f); }
         drawCard (g, r, col::card.brighter (0.05f * hoverA));
-        const auto head = getLocalBounds().withHeight (kEqClosed);
+        const auto head = getLocalBounds().reduced (M).withHeight (kEqClosed);
         g.setColour (col::text);
         g.setFont (font (19.0f, 600));
         g.drawText (L ("Эквалайзер", "Equalizer"), head.reduced (24, 0), juce::Justification::centredLeft);
@@ -707,13 +720,14 @@ public:
         g.strokePath (ch, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded),
                       juce::AffineTransform::rotation (turn).translated (cx, cy));
     }
-    void mouseMove (const juce::MouseEvent& e) override { setHover (e.y < kEqClosed); }
+    bool hitTest (int x, int y) override { return getLocalBounds().reduced (M).contains (x, y); }
+    void mouseMove (const juce::MouseEvent& e) override { setHover (e.y < M + kEqClosed); }
     void mouseExit (const juce::MouseEvent&) override { setHover (false); }
-    void mouseUp (const juce::MouseEvent& e) override { if (e.y < kEqClosed && onToggle) onToggle(); }
-    void tickHover()
+    void mouseUp (const juce::MouseEvent& e) override { if (e.y < M + kEqClosed && onToggle) onToggle(); }
+    void tickHover (float dtSeconds)
     {
         const float t = hover ? 1.0f : 0.0f;
-        hoverA += (t - hoverA) * 0.3f;
+        hoverA += (t - hoverA) * rate (dtSeconds, 18.0f);
         if (std::abs (t - hoverA) < 0.01f) hoverA = t;
         repaint();
     }
@@ -899,6 +913,7 @@ void MainComponent::setEqOpen (bool open, bool animate)
 {
     eqOpen = open;
     if (! animate) eqAnim = open ? 1.0f : 0.0f;
+    eqPanel->toFront (false);
     layoutEq();
     if (animate) ticker.startTimerHz (60);
 }
@@ -908,30 +923,27 @@ void MainComponent::layoutEq()
 {
     eqPanel->anim = eqAnim;
     eqPanel->open = eqOpen;
-    eqPanel->setBounds (eqR.withTop (eqR.getBottom() - eqHeight()));
-    const bool dim = eqAnim > 0.005f;
-    scrim->setVisible (dim);
-    scrim->setBounds (getLocalBounds());
-    scrim->amount = easeOut (eqAnim);
-    const bool plotShown = eqAnim > 0.02f;
-    eq->setVisible (plotShown);
-    if (plotShown)
-    {
-        eq->setBounds (eqPanel->getLocalBounds().withTrimmedTop (kEqClosed - 4).reduced (16, 10));
-        eq->setAlpha (juce::jlimit (0.0f, 1.0f, (eqAnim - 0.25f) / 0.75f));
-    }
-    eqPanel->toFront (false);
-    eqPanel->repaint();
-    scrim->repaint();
+    eqPanel->setBounds (eqR.withTop (eqR.getBottom() - eqHeight()).expanded (EqPanel::M));
+    // The dimming is the only thing that repaints the whole window, so it fades in during the first quarter of
+    // the movement (and out during the last) and stays put in between.
+    const float dim = easeOut (juce::jmin (1.0f, eqAnim * 4.0f));
+    const bool dimVisible = eqAnim > 0.005f;
+    if (scrim->isVisible() != dimVisible) scrim->setVisible (dimVisible);
+    if (scrim->getBounds() != getLocalBounds()) scrim->setBounds (getLocalBounds());
+    if (std::abs (scrim->amount - dim) > 0.002f) { scrim->amount = dim; scrim->repaint(); }
+    // the plot appears once the sheet has some height; no alpha layer (it would be redrawn through a temporary image)
+    const bool plotShown = eqAnim > 0.22f;
+    if (eq->isVisible() != plotShown) eq->setVisible (plotShown);
+    if (plotShown) eq->setBounds (eqPanel->getLocalBounds().reduced (EqPanel::M).withTrimmedTop (kEqClosed - 4).reduced (16, 10));
 }
 
 // One step of the sheet rising or sinking (60 Hz, only while it moves).
 void MainComponent::eqTick()
 {
     const float target = eqOpen ? 1.0f : 0.0f;
-    const float speed = 0.075f;   // about 0.22 s end to end
+    const float speed = ticker.frameDt() / 0.34f;   // 0.34 s end to end, whatever the refresh rate
     eqAnim = eqAnim < target ? std::min (target, eqAnim + speed) : std::max (target, eqAnim - speed);
-    eqPanel->tickHover();
+    eqPanel->tickHover (ticker.frameDt());
     const bool hoverSettled = std::abs ((eqPanel->hovering() ? 1.0f : 0.0f) - eqPanel->hoverAmount()) < 0.01f;
     if (eqAnim == target && hoverSettled) ticker.stopTimer();
     layoutEq();
@@ -1030,7 +1042,7 @@ void MainComponent::paint (juce::Graphics& g)
         glassOn() = true;
         g.drawImage (glass.scene, getLocalBounds().toFloat());
         // the mood of the current mode as a soft light over the scene
-        g.setGradientFill (juce::ColourGradient (kc.withAlpha (0.14f), 150.0f, -40.0f, kc.withAlpha (0.0f), 150.0f + 620.0f, 520.0f, true));
+        g.setGradientFill (juce::ColourGradient (kc.withAlpha (0.08f), 150.0f, -40.0f, kc.withAlpha (0.0f), 150.0f + 620.0f, 520.0f, true));
         g.fillRect (getLocalBounds());
         g.drawImage (glass.panes, getLocalBounds().toFloat());
     }

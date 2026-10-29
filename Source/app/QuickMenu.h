@@ -39,8 +39,11 @@ private:
     bool shown = false, keyboardUsed = false, autoApply = false, mouseInside = false;
     float anim = 0.0f;               // 0 hidden .. 1 shown (eased when painted)
     float flash = 0.0f;              // the chosen tile blinks once
-    double lastTap = 0, outSince = 0;
+    double lastTap = 0, outSince = 0, lastFrame = 0;
+    float dt() const { return frameDt; }
+    float frameDt = 1.0f / 60.0f;
     juce::Point<int> lastMouse;
+    juce::Image shadowCache;         // the soft shadow under the panel, blurred once
     std::array<float, 5> glow {};    // eased highlight per tile
     struct Hotkey;
     std::unique_ptr<Hotkey> hotkey;

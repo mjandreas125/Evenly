@@ -171,6 +171,38 @@ inline void drawKindIcon (juce::Graphics& g, Kind k, juce::Rectangle<float> r, j
     }
 }
 
+// Animation clock: a drop-in for juce::Timer that is called once per vertical blank of the display the
+// component is on (100 Hz monitor: 100 frames a second) and tells how long the last frame took, so that
+// every motion is computed from real time and looks the same at any refresh rate. Nothing runs while
+// stopped, and nothing at all while the window is hidden.
+class FrameTimer
+{
+public:
+    explicit FrameTimer (juce::Component* owner) : attachment (owner, [this] { frame(); }) {}
+    virtual ~FrameTimer() = default;
+    void startTimerHz (int) { if (! running) { running = true; last = now(); lastDt = 1.0f / 60.0f; } }
+    void stopTimer() { running = false; }
+    bool isTimerRunning() const { return running; }
+    float dt() const { return lastDt; }
+protected:
+    virtual void timerCallback() = 0;
+private:
+    static double now() { return juce::Time::getMillisecondCounterHiRes(); }
+    void frame()
+    {
+        if (! running) return;
+        const double n = now();
+        lastDt = juce::jlimit (0.001f, 0.05f, (float) ((n - last) / 1000.0));
+        last = n;
+        timerCallback();
+    }
+    juce::VBlankAttachment attachment;
+    bool running = false;
+    double last = 0;
+    float lastDt = 1.0f / 60.0f;
+};
+inline float rate (float dtSeconds, float perSecond) { return 1.0f - std::exp (-dtSeconds * perSecond); }
+
 // The colour of the mode in use; panels pick it up on their top edge (set by the main window).
 inline juce::Colour& neoTint() { static juce::Colour c = col::accent; return c; }
 
@@ -180,6 +212,18 @@ inline void glowStroke (juce::Graphics& g, const juce::Path& p, juce::Colour c, 
     g.setColour (c.withAlpha (0.07f * glow)); g.strokePath (p, juce::PathStrokeType (width + 9.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     g.setColour (c.withAlpha (0.12f * glow)); g.strokePath (p, juce::PathStrokeType (width + 5.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     g.setColour (c); g.strokePath (p, juce::PathStrokeType (width, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+}
+
+// A soft halo around a path from four strokes of growing width (cheap enough to repaint every frame, unlike a
+// blurred DropShadow). Draw the opaque interior of the shape over it.
+inline void softGlow (juce::Graphics& g, const juce::Path& p, juce::Colour c, float alpha, float spread = 10.0f)
+{
+    const float widths[4] = { 2.0f, 1.4f, 0.9f, 0.5f }, alphas[4] = { 0.05f, 0.07f, 0.10f, 0.14f };
+    for (int i = 0; i < 4; ++i)
+    {
+        g.setColour (c.withAlpha (juce::jlimit (0.0f, 1.0f, alpha * alphas[i] / 0.3f)));
+        g.strokePath (p, juce::PathStrokeType (spread * widths[i], juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
 }
 
 inline void glowDot (juce::Graphics& g, juce::Point<float> c, float radius, juce::Colour colour, float strength = 1.0f)

@@ -26,7 +26,7 @@ public:
 
     // popup menus: rounded floating panel with its own soft shadow, pill highlight, tick mark
     int getMenuWindowFlags() override { return juce::ComponentPeer::windowIsSemiTransparent; }
-    int getPopupMenuBorderSize() override { return 14; }
+    int getPopupMenuBorderSize() override { return 8; }
     void drawPopupMenuBackground (juce::Graphics&, int w, int h) override;
     void drawPopupMenuItem (juce::Graphics&, const juce::Rectangle<int>& area, bool isSeparator, bool isActive, bool isHighlighted,
                             bool isTicked, bool hasSubMenu, const juce::String& text, const juce::String& shortcut,
@@ -35,11 +35,11 @@ public:
 };
 
 // A button that eases into hover and press instead of jumping.
-class NeoButton : public juce::TextButton, private juce::Timer
+class NeoButton : public juce::TextButton, private FrameTimer
 {
 public:
     static constexpr int kGlow = 12;   // place the button with bounds().expanded (kGlow)
-    NeoButton() { setMouseCursor (juce::MouseCursor::PointingHandCursor); }
+    NeoButton() : FrameTimer (this) { setMouseCursor (juce::MouseCursor::PointingHandCursor); }
     void paintButton (juce::Graphics& g, bool, bool) override
     {
         const bool primary = getProperties().getWithDefault ("primary", false);
@@ -47,7 +47,7 @@ public:
         auto r = getLocalBounds().toFloat().reduced (kGlow + pressA * 1.2f);   // the rest of the bounds is for the glow
         juce::Path p;
         p.addRoundedRectangle (r, 10.0f);
-        if (hoverA > 0.02f) juce::DropShadow (c.withAlpha ((primary ? 0.45f : 0.30f) * hoverA), 10, { 0, 0 }).drawForPath (g, p);
+        if (hoverA > 0.02f) softGlow (g, p, c, (primary ? 0.45f : 0.30f) * hoverA, 10.0f);
         g.setGradientFill (juce::ColourGradient (c.withAlpha ((primary ? 0.30f : 0.06f) + hoverA * 0.10f + pressA * 0.12f), 0, r.getY(),
                                                  c.withAlpha ((primary ? 0.12f : 0.02f) + hoverA * 0.03f), 0, r.getBottom(), false));
         g.fillPath (p);
@@ -62,8 +62,8 @@ private:
     void timerCallback() override
     {
         const float th = isOver() ? 1.0f : 0.0f, tp = isDown() ? 1.0f : 0.0f;
-        hoverA += (th - hoverA) * 0.3f;
-        pressA += (tp - pressA) * 0.45f;
+        hoverA += (th - hoverA) * rate (dt(), 18.0f);
+        pressA += (tp - pressA) * rate (dt(), 32.0f);
         if (std::abs (th - hoverA) < 0.01f && std::abs (tp - pressA) < 0.01f) { hoverA = th; pressA = tp; stopTimer(); }
         repaint();
     }
@@ -71,9 +71,10 @@ private:
 };
 
 // A slider whose thumb and glow ease with the mouse.
-class NeoSlider : public juce::Slider, private juce::Timer
+class NeoSlider : public juce::Slider, private FrameTimer
 {
 public:
+    NeoSlider() : FrameTimer (this) {}
     float hoverAmount() const { return hoverA; }
     float pressAmount() const { return pressA; }
     void mouseEnter (const juce::MouseEvent& e) override { Slider::mouseEnter (e); startTimerHz (60); }
@@ -84,8 +85,8 @@ private:
     void timerCallback() override
     {
         const float th = isMouseOverOrDragging() ? 1.0f : 0.0f, tp = isMouseButtonDown() ? 1.0f : 0.0f;
-        hoverA += (th - hoverA) * 0.3f;
-        pressA += (tp - pressA) * 0.45f;
+        hoverA += (th - hoverA) * rate (dt(), 18.0f);
+        pressA += (tp - pressA) * rate (dt(), 32.0f);
         if (std::abs (th - hoverA) < 0.01f && std::abs (tp - pressA) < 0.01f) { hoverA = th; pressA = tp; stopTimer(); }
         repaint();
     }
@@ -126,7 +127,13 @@ private:
     void eqTick();
     void layoutEq();
     int eqHeight() const;
-    struct Ticker : juce::Timer { std::function<void()> tick; void timerCallback() override { if (tick) tick(); } } ticker;
+    struct Ticker : FrameTimer
+    {
+        explicit Ticker (juce::Component* c) : FrameTimer (c) {}
+        std::function<void()> tick;
+        float frameDt() const { return dt(); }
+        void timerCallback() override { if (tick) tick(); }
+    } ticker { this };
     void bannerAction();
     juce::String toneText() const;
     juce::String whyText() const;

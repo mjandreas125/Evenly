@@ -65,7 +65,9 @@ public:
     {
         juce::Path p;
         p.addRoundedRectangle (r, kRadius);
-        juce::DropShadow (juce::Colours::black.withAlpha (0.55f), 26, { 0, -6 }).drawForPath (g, p);
+        // a cheap shadow above the sheet (a blurred one would be recomputed every frame of the animation)
+        g.setGradientFill (juce::ColourGradient (juce::Colours::black.withAlpha (0.50f), 0, r.getY(), juce::Colours::black.withAlpha (0.0f), 0, r.getY() - 26.0f, false));
+        g.fillRect (r.getX() + 6.0f, r.getY() - 26.0f, r.getWidth() - 12.0f, 26.0f);
         {
             juce::Graphics::ScopedSaveState s (g);
             g.reduceClipRegion (p);
@@ -82,12 +84,12 @@ private:
     // ---- 1. the scene ----
     static void drawScene (juce::Graphics& g, int w, int h)
     {
-        g.fillAll (juce::Colour (0xff090b0f));
+        g.fillAll (juce::Colour (0xff06080b));
         const float W = (float) w, H = (float) h, big = std::max (W, H);
         struct Blob { float x, y, r; juce::uint32 colour; float alpha; };
         const Blob blobs[] = {
-            { 0.08f, 0.20f, 0.46f, 0xffffa14d, 0.50f }, { 0.52f, 0.05f, 0.40f, 0xff2fd3b3, 0.36f }, { 0.95f, 0.42f, 0.50f, 0xffa38dff, 0.46f },
-            { 0.28f, 0.98f, 0.46f, 0xffff6846, 0.38f }, { 0.78f, 0.95f, 0.42f, 0xff5eb2ff, 0.34f }, { 0.50f, 0.50f, 0.34f, 0xff6a4bd8, 0.20f } };
+            { 0.08f, 0.20f, 0.44f, 0xffffa14d, 0.30f }, { 0.52f, 0.05f, 0.38f, 0xff2fd3b3, 0.22f }, { 0.95f, 0.42f, 0.48f, 0xffa38dff, 0.28f },
+            { 0.28f, 0.98f, 0.44f, 0xffff6846, 0.23f }, { 0.78f, 0.95f, 0.40f, 0xff5eb2ff, 0.21f }, { 0.50f, 0.50f, 0.32f, 0xff6a4bd8, 0.12f } };
         for (const auto& b : blobs)
         {
             const juce::Colour c (b.colour);
@@ -209,18 +211,19 @@ private:
     }
 
     // ---- 4-5. tint, gloss, inner shadow and the specular rim ----
-    static void paintFinish (juce::Graphics& g, juce::Rectangle<float> r)
+    public:
+    static void paintFinish (juce::Graphics& g, juce::Rectangle<float> r, float radius = kRadius)
     {
         juce::Path p;
-        p.addRoundedRectangle (r, kRadius);
+        p.addRoundedRectangle (r, radius);
         juce::Graphics::ScopedSaveState s (g);
         g.reduceClipRegion (p);
-        g.setColour (juce::Colour (0xff0a0d13).withAlpha (0.52f));          // dark tint: text stays readable
+        g.setColour (juce::Colour (0xff0a0d13).withAlpha (0.64f));          // dark tint: text stays readable
         g.fillPath (p);
         g.setColour (juce::Colours::white.withAlpha (0.035f));              // frost
         g.fillPath (p);
         // the sheen: a diagonal band of light across the top left
-        g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.20f), r.getX(), r.getY(),
+        g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.17f), r.getX(), r.getY(),
                                                  juce::Colours::white.withAlpha (0.0f), r.getX() + r.getWidth() * 0.50f, r.getY() + r.getHeight() * 0.55f, false));
         g.fillPath (p);
         // a lip of light along the top edge
@@ -236,7 +239,7 @@ private:
         g.setGradientFill (rim);
         g.strokePath (p, juce::PathStrokeType (1.6f));
         juce::Path inner;
-        inner.addRoundedRectangle (r.reduced (2.2f), kRadius - 2.0f);
+        inner.addRoundedRectangle (r.reduced (2.2f), radius - 2.0f);
         g.setColour (juce::Colours::white.withAlpha (0.07f));
         g.strokePath (inner, juce::PathStrokeType (1.0f));
     }
