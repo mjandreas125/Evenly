@@ -86,7 +86,11 @@ private:
             // Speech has nothing useful above 12 kHz (many good recordings are cut there by codecs):
             // leave that range alone rather than chase hiss or codec differences.
             if (content == Content::Speech && kBandHz[b] >= 12000) d = 0;
-            want[b] = std::clamp (d * strength, -8.0, 6.0);
+            // Small deviations are corrected gently (good recordings stay as they are); a recording that is far
+            // off (an old, dull one) is brought almost all the way, not just by `strength`.
+            const double a = std::abs (d), kneeDb = 3.0;
+            const double fixed = strength * std::min (a, kneeDb) + 0.95 * std::max (0.0, a - kneeDb);
+            want[b] = std::clamp (d < 0 ? -fixed : fixed, -8.0, 9.0);
             w[b] = (kBandHz[b] < 60 || kBandHz[b] > 14000) ? 0.2 : 1.0;
         }
         // Least-squares fit of the 10 EQ gains to the wanted curve (the bands overlap).
@@ -107,7 +111,7 @@ private:
         bool changed = false;
         for (int i = 0; i < 10; ++i)
         {
-            const float target = (float) std::clamp (A[i][10], -6.0, 6.0);
+            const float target = (float) std::clamp (A[i][10], -6.0, 9.0);
             const float step = std::clamp (target - gains[i], -1.0f, 1.0f);   // at most 1 dB per 2 s
             if (std::abs (step) >= 0.05f) { gains[i] = std::round ((gains[i] + step) * 10) / 10; changed = true; }
         }
