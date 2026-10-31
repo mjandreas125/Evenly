@@ -1,5 +1,5 @@
-﻿cmake_minimum_required(VERSION 3.22)
-project(Rovno VERSION 0.9.0 LANGUAGES C CXX)
+cmake_minimum_required(VERSION 3.22)
+project(Rovno VERSION 0.10.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -31,12 +31,15 @@ target_sources(Rovno PRIVATE
 target_compile_definitions(Rovno PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_DISPLAY_SPLASH_SCREEN=0
     JUCE_APPLICATION_NAME_STRING="Rovno" JUCE_APPLICATION_VERSION_STRING="${PROJECT_VERSION}")
 target_compile_options(Rovno PRIVATE /bigobj)
-target_link_libraries(Rovno PRIVATE RovnoData juce::juce_gui_extra juce::juce_recommended_config_flags
+target_link_libraries(Rovno PRIVATE RovnoData juce::juce_gui_extra juce::juce_opengl juce::juce_recommended_config_flags
     juce::juce_recommended_warning_flags ole32 windowsapp dwmapi)
 
 # --- offline renderer (tests, tuning) ---------------------------------------------------------
 add_executable(rovno_render Source/tools/RenderMain.cpp)
 target_compile_options(rovno_render PRIVATE ${STRICT})
+
+# --- level after a pause (sound drops out and comes back) --------------------------------------
+add_executable(rovno_pausetest Source/tests/PauseTest.cpp)
 
 # --- offline tone corrector (as the app drives it) ---------------------------------------------
 add_executable(rovno_tone Source/tools/ToneMain.cpp)
@@ -70,4 +73,5 @@ target_link_libraries(rovno_fakefx PRIVATE advapi32)
 # --- install / remove / talk to the effect ----------------------------------------------------
 add_executable(rovno_ctl Source/tools/CtlMain.cpp)
 target_link_libraries(rovno_ctl PRIVATE advapi32 ole32 oleaut32)
+
 

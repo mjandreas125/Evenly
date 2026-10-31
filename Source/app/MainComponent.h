@@ -96,6 +96,9 @@ private:
 class Switch;
 class ModeBar;
 class Spectrum;
+class Visualizer;
+class ViewToggle;
+class VisualWindow;
 class LevelGraph;
 class EqEditor;
 class DeviceBox;
@@ -136,6 +139,9 @@ private:
         void timerCallback() override { if (tick) tick(); }
     } ticker { this };
     void bannerAction();
+    void applyView (bool instant = false);   // spectrum or visual in the loudness card
+    void openVisual();       // the visual on the whole screen
+    void closeVisual();
     juce::String toneText() const;
     juce::String whyText() const;
     enum class Banner { None, NotInstalled, FxSound };
@@ -146,6 +152,9 @@ private:
     std::unique_ptr<Switch> power, levelSwitch, toneSwitch;
     std::unique_ptr<ModeBar> modes;
     std::unique_ptr<Spectrum> spectrum;
+    std::unique_ptr<Visualizer> viz;
+    std::unique_ptr<ViewToggle> viewToggle;
+    std::unique_ptr<VisualWindow> vizWindow;
     std::unique_ptr<LevelGraph> graph;
     std::unique_ptr<EqEditor> eq;
     std::unique_ptr<EqPanel> eqPanel;

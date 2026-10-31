@@ -3,6 +3,7 @@
 //   Rovno.exe --tray     start hidden in the tray (autostart)
 //   Rovno.exe --snapshot out.png [--eq] [--scale 1.3]   render the window to a PNG and quit (for checking the look)
 #include "MainComponent.h"
+#include "Visualizer.h"
 #include "QuickMenu.h"
 #include <juce_gui_extra/juce_gui_extra.h>
 #include <dwmapi.h>
@@ -180,13 +181,53 @@ class RovnoApplication : public juce::JUCEApplication
 public:
     const juce::String getApplicationName() override { return "Rovno"; }
     const juce::String getApplicationVersion() override { return JUCE_APPLICATION_VERSION_STRING; }
-    bool moreThanOneInstanceAllowed() override { return false; }
+    // The picture tools (--vizshot, --snapshot) run next to a running app instead of handing their command line to it.
+    bool moreThanOneInstanceAllowed() override
+    {
+        const auto cl = getCommandLineParameters();
+        return cl.contains ("--vizshot") || cl.contains ("--snapshot");
+    }
 
     void initialise (const juce::String& commandLine) override
     {
         controller = std::make_unique<rv::Controller>();
         juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);   // the tray menu gets the same look
         const auto args = juce::StringArray::fromTokens (commandLine, true);
+        // Rovno.exe --vizshot out.png [--viz-style 0..4 | all] [--viz-size 1280x720] [--viz-time 20] [--viz-kind music|speech|movie|game] [--viz-controls]
+        // draws the visual with a made-up piece of music, without a window, and quits (for checking the look)
+        if (args.contains ("--vizshot"))
+        {
+            auto opt = [&] (const char* name, const juce::String& def) { const int i = args.indexOf (name); return i >= 0 && i + 1 < args.size() ? args[i + 1] : def; };
+            const auto size = juce::StringArray::fromTokens (opt ("--viz-size", "1280x720"), "x", "");
+            const int w = size[0].getIntValue(), h = size[1].getIntValue();
+            const float seconds = opt ("--viz-time", "20").getFloatValue();
+            const auto kindName = opt ("--viz-kind", "music");
+            const rv::Kind kind = kindName == "speech" ? rv::Kind::Speech : kindName == "movie" ? rv::Kind::Movie : kindName == "game" ? rv::Kind::Game : rv::Kind::Music;
+            const auto path = juce::File (opt ("--vizshot", "viz.png"));
+            const bool all = opt ("--viz-style", "0") == "all";
+            for (int st = all ? 0 : opt ("--viz-style", "0").getIntValue(); st < (all ? rv::ui::kVizStyles : opt ("--viz-style", "0").getIntValue() + 1); ++st)
+            {
+                rv::ui::Visualizer v (w > 900);
+                v.setBounds (0, 0, w, h);
+                v.setStyleNow ((rv::ui::VizStyle) st);
+                std::array<float, (size_t) rv::kBands> bands {};
+                for (float tt = 0; tt < seconds; tt += 1.0f / 60.0f)
+                {
+                    rv::ui::Visualizer::fakeBands (tt, bands);
+                    v.feed (bands, kind, true);
+                    v.advance (1.0f / 60.0f);
+                }
+                if (args.contains ("--viz-controls")) v.previewControls();
+                const auto img = v.createComponentSnapshot (v.getLocalBounds(), true, 1.0f);
+                const auto file = all ? path.getSiblingFile (path.getFileNameWithoutExtension() + "-" + juce::String (st) + path.getFileExtension()) : path;
+                file.deleteFile();
+                juce::FileOutputStream out { file };
+                juce::PNGImageFormat().writeImageToStream (img, out);
+                out.flush();
+            }
+            quit();
+            return;
+        }
         const int snap = args.indexOf ("--snapshot");
         if (snap >= 0)
         {

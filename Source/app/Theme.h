@@ -52,7 +52,7 @@ inline juce::String L (const char* ruUtf8, const char* enUtf8)
         default: return translate (enUtf8);
     }
 }
-inline juce::String appName() { return language() == Lang::Ru ? juce::String::fromUTF8 ("Ровно") : juce::String ("Evenly"); }
+inline juce::String appName() { return "Evenly"; }   // the same in every language
 
 inline juce::String kindName (Kind k)
 {

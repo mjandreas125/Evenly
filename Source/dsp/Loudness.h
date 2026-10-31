@@ -124,7 +124,7 @@ public:
     void reset()
     {
         for (auto& k : kw) k.reset();
-        pSlow = pFast = 0; haveEstimate = false; silence = 0; quietRun = 0; activeTime = 0;
+        pSlow = pFast = 0; haveEstimate = false; silence = 0; quietRun = 0; activeTime = 0; settle = 0;
         gainDb = 0; appliedGain = 1;
     }
     void idle (double seconds) { silence += seconds; }   // time passed without being measured
@@ -149,22 +149,32 @@ public:
         const double dur = n / fs, lk = powerToLufs (z);
         // A block far below the current level is a pause in speech or music: it must not pull the
         // estimate down (or the gain up). But if "pauses" go on for 2 s, it is quieter content.
+        // Tape hiss and room noise in the pauses of an old recording sit 12..25 dB under the speech: they count
+        // as a pause too, but a stretch that is only 12..18 dB down needs three times as long to count as new.
         const bool audible = lk > -60;
-        const bool belowLevel = haveEstimate && lk <= powerToLufs (pSlow) - 18;
-        quietRun = audible && belowLevel ? quietRun + dur : 0;
+        const double slowLk = haveEstimate ? powerToLufs (pSlow) : 0;
+        const bool belowLevel = haveEstimate && lk <= slowLk - 12;
+        const bool deepBelow = haveEstimate && lk <= slowLk - 18;
+        quietRun = audible && belowLevel ? quietRun + (deepBelow ? dur : dur / 3) : 0;
         const bool newQuieter = quietRun > s.quietToNewSec;
         const bool active = audible && (! belowLevel || newQuieter);
         if (active)
         {
-            // Never come back from a pause with a big boost: the next thing may be loud.
-            if (silence > 1.0) gainDb = std::min (gainDb, 6.0);
-            if (! haveEstimate || silence > 4.0 || newQuieter)
+            // Coming back from a pause the gain stays where it was (the same video goes on at the same
+            // volume, it does not creep up from lower). What guards against something much louder is
+            // the fast estimate, which for the first moments is a plain running mean of what arrives.
+            const bool resumed = haveEstimate && silence > 1.0;
+            const bool fresh = ! haveEstimate || silence > 4.0 || newQuieter;
+            if (resumed || fresh)
             {
-                // New content (first sound, after a long silence, or much quieter): start from here.
-                pSlow = pFast = z;
-                haveEstimate = true;
-                activeTime = 0;
-                quietRun = 0;
+                settle = settleSec; settleZ = 0; settleT = 0; settleFresh = fresh;
+                if (fresh) { activeTime = 0; quietRun = 0; }
+            }
+            if (settle > 0)
+            {
+                settleZ += z * dur; settleT += dur; settle -= dur;
+                pFast = settleZ / settleT;
+                if (settleFresh) { pSlow = pFast; haveEstimate = true; }
             }
             else
             {
@@ -185,8 +195,8 @@ public:
             const bool jump = desired > guard && guard < gainDb;
             if (desired > guard) desired = std::max (guard, -s.maxCutDb);
             double rate;
-            if (desired < gainDb) rate = jump ? 40.0 : 6.0;
-            else rate = active ? (activeTime < 2.0 ? 10.0 : s.riseDbPerSec) : 0.0;
+            if (desired < gainDb) rate = jump || (settleFresh && activeTime < 1.5) ? 40.0 : 6.0;   // new, louder content comes down at once
+            else rate = active && settle <= 0 ? (activeTime < 2.0 ? 10.0 : s.riseDbPerSec) : 0.0;   // no rising while the estimate settles
             const double step = rate * dur;
             gainDb = desired < gainDb ? std::max (desired, gainDb - step) : std::min (desired, gainDb + step);
         }
@@ -206,7 +216,9 @@ private:
     double fs = 48000;
     KWeight kw[2];
     double pSlow = 0, pFast = 0, silence = 0, quietRun = 0, activeTime = 0, gainDb = 0, appliedGain = 1;
-    bool haveEstimate = false;
+    double settle = 0, settleZ = 0, settleT = 0;
+    static constexpr double settleSec = 0.5;   // after a pause: measure first, move the gain only down
+    bool haveEstimate = false, settleFresh = false;
 };
 
 // Look-ahead peak limiter: the gain reaches its minimum exactly when the peak leaves the delay,

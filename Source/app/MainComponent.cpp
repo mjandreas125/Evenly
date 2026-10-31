@@ -1,4 +1,5 @@
 #include "MainComponent.h"
+#include "Visualizer.h"
 #include <windows.h>
 
 namespace rv::ui
@@ -522,6 +523,80 @@ public:
     void prime() { shown.fill (-90.0f); shownPeaks.fill (-90.0f); target.fill (-90.0f); targetPeaks.fill (-90.0f); seeded = false; }
 };
 
+// ---- Spectrum | Visual -------------------------------------------------------------------------
+class ViewToggle : public juce::Component, private FrameTimer
+{
+public:
+    ViewToggle() : FrameTimer (this) { setMouseCursor (juce::MouseCursor::PointingHandCursor); }
+    std::function<void (bool visual)> onChange;
+    void set (bool visual, juce::Colour c, bool instant = false)
+    {
+        tint = c;
+        if (visual != on) { on = visual; if (instant) pos = on ? 1.0f : 0.0f; else startTimerHz (60); }
+        repaint();
+    }
+    void paint (juce::Graphics& g) override
+    {
+        const auto r = getLocalBounds().toFloat().reduced (0.5f);
+        g.setColour (juce::Colours::white.withAlpha (0.05f));
+        g.fillRoundedRectangle (r, r.getHeight() * 0.5f);
+        g.setColour (juce::Colours::white.withAlpha (0.14f));
+        g.drawRoundedRectangle (r, r.getHeight() * 0.5f, 1.0f);
+        const float half = r.getWidth() * 0.5f;
+        const auto pill = juce::Rectangle<float> (r.getX() + pos * half, r.getY(), half, r.getHeight()).reduced (3.0f);
+        g.setColour (tint.withAlpha (0.26f));
+        g.fillRoundedRectangle (pill, pill.getHeight() * 0.5f);
+        g.setColour (tint.withAlpha (0.85f));
+        g.drawRoundedRectangle (pill, pill.getHeight() * 0.5f, 1.2f);
+        g.setFont (font (16.5f, 600));
+        g.setColour (pos < 0.5f ? col::text : col::dim);
+        g.drawText (L ("Спектр", "Spectrum"), juce::Rectangle<float> (r.getX(), r.getY(), half, r.getHeight()), juce::Justification::centred);
+        g.setColour (pos >= 0.5f ? col::text : col::dim);
+        g.drawText (L ("Визуал", "Visual"), juce::Rectangle<float> (r.getX() + half, r.getY(), half, r.getHeight()), juce::Justification::centred);
+    }
+    void mouseUp (const juce::MouseEvent& e) override
+    {
+        const bool visual = e.position.x > (float) getWidth() * 0.5f;
+        if (visual != on && onChange) onChange (visual);
+    }
+private:
+    void timerCallback() override
+    {
+        const float to = on ? 1.0f : 0.0f;
+        pos += (to - pos) * rate (dt(), 18.0f);
+        if (std::abs (to - pos) < 0.01f) { pos = to; stopTimer(); }
+        repaint();
+    }
+    bool on = false;
+    float pos = 0;
+    juce::Colour tint = col::accent;
+};
+
+// The visual on the whole screen of the monitor the main window is on; Esc, the X or a double click closes it.
+class VisualWindow : public juce::DocumentWindow
+{
+public:
+    VisualWindow (juce::Rectangle<int> screenArea, std::function<void()> closed) : juce::DocumentWindow (appName(), col::bg, 0), onClosed (std::move (closed))
+    {
+        setUsingNativeTitleBar (false);
+        setTitleBarHeight (0);
+        view = new Visualizer (true);
+        view->onClose = [this] { if (onClosed) onClosed(); };
+        setContentOwned (view, false);
+        setResizable (false, false);
+        setBounds (screenArea);
+        setVisible (true);
+        juce::Desktop::getInstance().setKioskModeComponent (this, false);
+        view->grabKeyboardFocus();
+    }
+    ~VisualWindow() override { juce::Desktop::getInstance().setKioskModeComponent (nullptr); }
+    void closeButtonPressed() override { if (onClosed) onClosed(); }
+    Visualizer& visual() { return *view; }
+private:
+    Visualizer* view = nullptr;
+    std::function<void()> onClosed;
+};
+
 // ---- loudness in and out over the last 90 s ----------------------------------------------------
 class LevelGraph : public juce::Component
 {
@@ -829,11 +904,13 @@ MainComponent::MainComponent (Controller& controller) : c (controller)
     modes = std::make_unique<ModeBar>();
     spectrum = std::make_unique<Spectrum>();
     spectrum->prime();
+    viz = std::make_unique<Visualizer>();
+    viewToggle = std::make_unique<ViewToggle>();
     graph = std::make_unique<LevelGraph>();
     eq = std::make_unique<EqEditor>();
     deviceBox = std::make_unique<DeviceBox>();
     for (juce::Component* comp : std::initializer_list<juce::Component*> { power.get(), levelSwitch.get(), toneSwitch.get(), modes.get(),
-                                                                            spectrum.get(), graph.get(), deviceBox.get(),
+                                                                            spectrum.get(), viz.get(), viewToggle.get(), graph.get(), deviceBox.get(),
                                                                             &volume, &fid, &bass, &surr, &amb, &resetSound, &bannerButton, &moreButton })
         addAndMakeVisible (comp);
     scrim = std::make_unique<Scrim>();
@@ -878,9 +955,25 @@ MainComponent::MainComponent (Controller& controller) : c (controller)
         syncFromController();
     };
 
+    viewToggle->onChange = [this] (bool visual)
+    {
+        VizPrefs::get().visual = visual;
+        VizPrefs::get().save();
+        applyView();
+    };
+    viz->onExpand = [this] { openVisual(); };
+    viz->onChoice = [this] (VizStyle st, bool autoOn)
+    {
+        VizPrefs::get().style = st;
+        VizPrefs::get().autoCycle = autoOn;
+        VizPrefs::get().save();
+        if (vizWindow != nullptr) { vizWindow->visual().setStyleNow (st); vizWindow->visual().setAuto (autoOn); }
+    };
+
     c.addChangeListener (this);
     kcCur = kindColour (c.now().kind);
     setSize (kWidth, preferredHeight());
+    applyView (true);
     syncFromController();
     ticker.tick = [this] { eqTick(); };
     startTimerHz (30);
@@ -888,6 +981,7 @@ MainComponent::MainComponent (Controller& controller) : c (controller)
 
 MainComponent::~MainComponent()
 {
+    vizWindow.reset();
     c.removeChangeListener (this);
     setLookAndFeel (nullptr);
 }
@@ -1034,6 +1128,14 @@ void MainComponent::timerCallback()
         needPaint = true;
     }
     if (! demoData) spectrum->set (st.bands, st.bandPeaks, kcCur, c.enabled() && st.running);
+    if (viz->isShowing() || vizWindow != nullptr)
+    {
+        std::array<float, (size_t) kBands> bands = st.bands;
+        bool on = c.enabled() && st.running;
+        if (demoData) { Visualizer::fakeBands (juce::Time::getMillisecondCounterHiRes() / 1000.0, bands); on = true; }
+        viz->feed (bands, st.kind, on);
+        if (vizWindow != nullptr) vizWindow->visual().feed (bands, st.kind, on);
+    }
     if (! demoData && ++graphTick % 6 == 0)
         graph->set (st.history, targetLufsFor (c.volume()) + c.sound (st.kind).targetOffsetDb, c.leveler() && c.enabled(), kcCur);
     if (st.kind != shownKind) syncFromController();
@@ -1138,7 +1240,7 @@ void MainComponent::paint (juce::Graphics& g)
         g.fillRoundedRectangle (juce::Rectangle<float> ((float) bannerR.getX() + 18.0f, (float) bannerR.getCentreY() - 10.0f, 4.0f, 20.0f), 2.0f);
         g.setFont (font (15.0f, 500));
         const auto text = banner() == Banner::NotInstalled
-            ? L ("«Ровно» ещё не подключён к этому выходу. Windows спросит разрешение, звук пропадёт на секунду.",
+            ? L ("Evenly ещё не подключён к этому выходу. Windows спросит разрешение, звук пропадёт на секунду.",
                  "Evenly is not connected to this output yet. Windows will ask for permission; sound stops for a second.")
             : L ("Звук сейчас идёт через FxSound, обработка будет двойной. Переключить вывод на этот выход?",
                  "Sound goes through FxSound now, so it would be processed twice. Switch the output to this device?");
@@ -1291,6 +1393,8 @@ void MainComponent::resized()
     soundR = row2;
     levelSwitch->setBounds (juce::Rectangle<int> (loudR.getRight() - 24 - 56, loudR.getY() + 16, 56, 34).expanded (Switch::kGlow - 4));
     spectrum->setBounds (loudR.getX() + 24, loudR.getY() + 66, loudR.getWidth() - 48, 150);
+    viz->setBounds (spectrum->getBounds());
+    viewToggle->setBounds (loudR.getRight() - 24 - 56 - 16 - 232, loudR.getY() + 12, 232, 44);
     graph->setBounds (loudR.getX() + 24, loudR.getY() + 242, loudR.getWidth() - 48, 108);
     volume.setBounds (loudR.getX() + 24 + 140, loudR.getBottom() - 18 - 36, loudR.getWidth() - 48 - 140 - 56, 36);
 
@@ -1316,7 +1420,7 @@ void MainComponent::bannerAction()
         juce::String err;
         if (! c.installOnDevice (true, err) && err != "cancelled")
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, L ("Не получилось", "That did not work"),
-                                                    L ("Не удалось подключить «Ровно» к выходу: ", "Could not connect Evenly to the output: ") + err);
+                                                    L ("Не удалось подключить Evenly к выходу: ", "Could not connect Evenly to the output: ") + err);
     }
     else if (banner() == Banner::FxSound)
     {
@@ -1360,7 +1464,7 @@ void MainComponent::showMoreMenu()
     m.addSubMenu (L ("Язык", "Language"), langs);
     m.addSeparator();
     m.addItem (3, L ("Забыть, что программа выучила", "Forget what the app has learned"));
-    m.addItem (4, L ("Отключить «Ровно» от этого выхода", "Disconnect Evenly from this output"), c.now().installed);
+    m.addItem (4, L ("Отключить Evenly от этого выхода", "Disconnect Evenly from this output"), c.now().installed);
     m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (moreButton).withMinimumWidth (300), [this] (int r)
     {
         if (r == 1) c.setKeepAwake (! c.keepAwake());
@@ -1374,6 +1478,40 @@ void MainComponent::showMoreMenu()
         syncFromController();
     });
 }
+
+// Spectrum or visual in the loudness card, as the user left it.
+void MainComponent::applyView (bool instant)
+{
+    const bool visual = VizPrefs::get().visual;
+    spectrum->setVisible (! visual);
+    viz->setVisible (visual);
+    viewToggle->set (visual, kcCur, instant);
+    if (visual) { viz->setStyleNow (VizPrefs::get().style); viz->setAuto (VizPrefs::get().autoCycle); }
+}
+
+void MainComponent::openVisual()
+{
+    if (vizWindow != nullptr) return;
+    const auto where = getScreenBounds();
+    const auto* disp = juce::Desktop::getInstance().getDisplays().getDisplayForRect (where);
+    const juce::Rectangle<int> area = (disp != nullptr ? disp->logicalBounds : juce::Desktop::getInstance().getDisplays().getPrimaryDisplay()->logicalBounds).toNearestInt();
+    vizWindow = std::make_unique<VisualWindow> (area, [safe = juce::Component::SafePointer<MainComponent> (this)]
+    {
+        juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->closeVisual(); });
+    });
+    vizWindow->visual().setStyleNow (VizPrefs::get().style);
+    vizWindow->visual().setAuto (VizPrefs::get().autoCycle);
+    vizWindow->visual().onChoice = [this] (VizStyle st, bool autoOn)
+    {
+        VizPrefs::get().style = st;
+        VizPrefs::get().autoCycle = autoOn;
+        VizPrefs::get().save();
+        viz->setStyleNow (st);
+        viz->setAuto (autoOn);
+    };
+}
+
+void MainComponent::closeVisual() { vizWindow.reset(); }
 
 // Texts that are set once on a component (the rest is drawn from L() on every paint).
 void MainComponent::refreshTexts()

@@ -1,7 +1,7 @@
-﻿; Inno Setup script for Evenly (internal file names keep the project's old name, Rovno).
+; Inno Setup script for Evenly (internal file names keep the project's old name, Rovno).
 ; Build: ISCC.exe /DBuildDir=C:\dev\build\Rovno Rovno.iss
 #define AppName "Evenly"
-#define AppVersion "0.9.0"
+#define AppVersion "0.10.0"
 #ifndef BuildDir
   #define BuildDir "..\build"
 #endif
@@ -48,7 +48,7 @@ Name: "uk"; MessagesFile: "compiler:Languages\Ukrainian.isl"
 [CustomMessages]
 ru.Autostart=Запускать вместе с Windows (в трее)
 ru.Desktop=Значок на рабочем столе
-ru.RunNow=Открыть «Ровно»
+ru.RunNow=Открыть Evenly
 en.Autostart=Start with Windows (in the tray)
 en.Desktop=Desktop icon
 en.RunNow=Open Evenly
