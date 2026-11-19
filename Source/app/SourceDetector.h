@@ -23,12 +23,16 @@ struct NowPlaying
     std::wstring title, artist, album;
     int playbackType = 0;        // 0 unknown, 1 music, 2 video, 3 image
     bool playing = false;
+    bool hasTimeline = false;    // the player reports where it is in the track (Chrome, Spotify, YouTube Music do)
+    double positionSec = 0;      // the position at the moment of the poll (already moved on by the time since the player last said it)
+    double durationSec = 0;
 };
 
 struct SourceSnapshot
 {
     std::vector<PlayingApp> apps;    // programs with sound right now, loudest first
     NowPlaying media;
+    double polledAtMs = 0;           // when this snapshot was taken (juce millisecond counter); set by whoever polls
 };
 
 class SourceDetector

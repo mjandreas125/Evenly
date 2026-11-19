@@ -1,4 +1,5 @@
 #include "MainComponent.h"
+#include "Stall.h"
 #include "Visualizer.h"
 #include <windows.h>
 
@@ -9,6 +10,7 @@ namespace
 // Layout, in logical pixels (the window scales the whole thing for big monitors).
 constexpr int kTop = 20, kHead = 64, kBannerH = 64, kRow1 = 150, kRow2 = 400, kEqClosed = 60, kEqOpen = 290, kBottom = 24, kGap = 16;
 constexpr int kPad = 24;
+constexpr int kTheaterViz = 460, kTheaterBar = 64;   // the compact layout: a picture in 21:9 and a bar of icons
 
 juce::Colour lerpColour (juce::Colour a, juce::Colour b, float t) { return a.interpolatedWith (b, t); }
 } // namespace
@@ -232,6 +234,7 @@ class ModeBar : public juce::Component, private FrameTimer
 {
 public:
     std::function<void (Kind)> onPick;   // Kind::Unknown = auto
+    bool compact = false;                // icons only, in a thin bar
     static constexpr int kGlow = 18;   // place the bar with bounds().expanded (kGlow)
     ModeBar() : FrameTimer (this) { setMouseCursor (juce::MouseCursor::PointingHandCursor); startTimerHz (60); }
     void set (bool autoOn, Kind current)
@@ -280,10 +283,12 @@ public:
             const juce::Colour kc = kindColour (k);
             juce::Colour ic = col::dim.interpolatedWith (kc.brighter (0.15f), nearPill);
             if (isAuto && active && nearPill < 0.5f) ic = kc;
-            const float iconSize = 36.0f;
-            const auto iconR = juce::Rectangle<float> (r.getCentreX() - iconSize / 2, r.getY() + 28.0f - hoverA[i] * 2.0f, iconSize, iconSize);
+            const float iconSize = compact ? 30.0f : 36.0f;
+            const auto iconR = compact ? juce::Rectangle<float> (r.getCentreX() - iconSize / 2, r.getCentreY() - iconSize / 2 - hoverA[i] * 1.5f, iconSize, iconSize)
+                                       : juce::Rectangle<float> (r.getCentreX() - iconSize / 2, r.getY() + 28.0f - hoverA[i] * 2.0f, iconSize, iconSize);
             if (nearPill > 0.05f) glowDot (g, iconR.getCentre(), 11.0f, kc, nearPill * 0.55f);
             drawKindIcon (g, k, iconR, ic, 2.0f);
+            if (compact) continue;
             g.setColour (col::dim.interpolatedWith (col::text, juce::jmax (nearPill, hoverA[i] * 0.7f)));
             g.setFont (font (15.5f, nearPill > 0.5f ? 600 : 500));
             g.drawText (kindName (k), r.withTop (r.getY() + 82.0f).withHeight (24.0f), juce::Justification::centred);
@@ -572,6 +577,43 @@ private:
     juce::Colour tint = col::accent;
 };
 
+// A round icon button: the big picture on / off. Brightens under the mouse.
+class TheaterButton : public juce::Button, private FrameTimer
+{
+public:
+    TheaterButton() : juce::Button ("theater"), FrameTimer (this) { setMouseCursor (juce::MouseCursor::PointingHandCursor); }
+    bool on = false;
+    void paintButton (juce::Graphics& g, bool over, bool down) override
+    {
+        const auto r = getLocalBounds().toFloat().reduced (2.0f);
+        const float h = over ? 1.0f : 0.0f;
+        g.setColour (col::cardHi.brighter (0.10f * h + (down ? 0.08f : 0.0f)));
+        g.fillEllipse (r);
+        g.setColour ((on ? col::accent : col::line.interpolatedWith (col::faint, h * 0.8f)).withAlpha (on ? 0.9f : 1.0f));
+        g.drawEllipse (r, on ? 1.6f : 1.0f);
+        g.setColour (on ? col::accent.brighter (0.3f) : col::dim.interpolatedWith (col::text, h));
+        const auto c = r.getCentre();
+        const float s = r.getWidth() * 0.22f;
+        juce::Path p;
+        if (! on)   // a frame with the picture growing to its corners: "bigger"
+        {
+            p.startNewSubPath (c.x - s, c.y - s + 5); p.lineTo (c.x - s, c.y - s); p.lineTo (c.x - s + 5, c.y - s);
+            p.startNewSubPath (c.x + s - 5, c.y - s); p.lineTo (c.x + s, c.y - s); p.lineTo (c.x + s, c.y - s + 5);
+            p.startNewSubPath (c.x + s, c.y + s - 5); p.lineTo (c.x + s, c.y + s); p.lineTo (c.x + s - 5, c.y + s);
+            p.startNewSubPath (c.x - s + 5, c.y + s); p.lineTo (c.x - s, c.y + s); p.lineTo (c.x - s, c.y + s - 5);
+        }
+        else        // the corners pulled in: back to the full window
+        {
+            p.startNewSubPath (c.x - s, c.y - 2); p.lineTo (c.x - 2, c.y - 2); p.lineTo (c.x - 2, c.y - s);
+            p.startNewSubPath (c.x + 2, c.y - s); p.lineTo (c.x + 2, c.y - 2); p.lineTo (c.x + s, c.y - 2);
+            p.startNewSubPath (c.x + s, c.y + 2); p.lineTo (c.x + 2, c.y + 2); p.lineTo (c.x + 2, c.y + s);
+            p.startNewSubPath (c.x - 2, c.y + s); p.lineTo (c.x - 2, c.y + 2); p.lineTo (c.x - s, c.y + 2);
+        }
+        g.strokePath (p, juce::PathStrokeType (1.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
+private:
+    void timerCallback() override {}
+};
 // The visual on the whole screen of the monitor the main window is on; Esc, the X or a double click closes it.
 class VisualWindow : public juce::DocumentWindow
 {
@@ -587,6 +629,7 @@ public:
         setBounds (screenArea);
         setVisible (true);
         juce::Desktop::getInstance().setKioskModeComponent (this, false);
+        if (auto* peer = getPeer()) ScreenPalette::get().hideFromCapture ((HWND) peer->getNativeHandle());
         view->grabKeyboardFocus();
     }
     ~VisualWindow() override { juce::Desktop::getInstance().setKioskModeComponent (nullptr); }
@@ -613,11 +656,11 @@ public:
     {
         auto all = getLocalBounds().toFloat();
         auto r = all.withTrimmedLeft (34.0f).withTrimmedBottom (20.0f).withTrimmedTop (8.0f);
-        const float lo = -42.0f, hi = -4.0f;
+        const float lo = -60.0f, hi = -4.0f;   // low enough for a quiet source (player at 10%: about -44 LUFS)
         auto yOf = [&] (float v) { return r.getBottom() - (juce::jlimit (lo, hi, v) - lo) / (hi - lo) * r.getHeight(); };
         // scale
         g.setFont (font (12.5f, 500));
-        for (float db : { -10.0f, -20.0f, -30.0f })
+        for (float db : { -10.0f, -20.0f, -30.0f, -40.0f, -50.0f })
         {
             g.setColour (juce::Colours::white.withAlpha (0.06f));
             g.fillRect (r.getX(), yOf (db), r.getWidth(), 1.0f);
@@ -909,6 +952,12 @@ MainComponent::MainComponent (Controller& controller) : c (controller)
     graph = std::make_unique<LevelGraph>();
     eq = std::make_unique<EqEditor>();
     deviceBox = std::make_unique<DeviceBox>();
+    theaterBtn = std::make_unique<TheaterButton>();
+    theater = VizPrefs::get().theater;
+    theaterBtn->on = theater;
+    theaterBtn->onClick = [this] { applyTheater (! theater); };
+    addAndMakeVisible (theaterBtn.get());
+    modes->compact = theater;
     for (juce::Component* comp : std::initializer_list<juce::Component*> { power.get(), levelSwitch.get(), toneSwitch.get(), modes.get(),
                                                                             spectrum.get(), viz.get(), viewToggle.get(), graph.get(), deviceBox.get(),
                                                                             &volume, &fid, &bass, &surr, &amb, &resetSound, &bannerButton, &moreButton })
@@ -962,6 +1011,13 @@ MainComponent::MainComponent (Controller& controller) : c (controller)
         applyView();
     };
     viz->onExpand = [this] { openVisual(); };
+    viz->pull = [this] (std::array<float, (size_t) kBands>& out) { return ! demoData && c.fastBands (out); };
+    viz->onFollow = [this] (bool on)
+    {
+        VizPrefs::get().followVideo = on;
+        VizPrefs::get().save();
+        if (vizWindow != nullptr) vizWindow->visual().setFollow (on);
+    };
     viz->onChoice = [this] (VizStyle st, bool autoOn)
     {
         VizPrefs::get().style = st;
@@ -1021,7 +1077,7 @@ void MainComponent::syncFromController()
         auto hist = st.history;
         if (demoData) demoFill (bands, peaks, hist);
         spectrum->set (bands, peaks, kcCur, demoData || (c.enabled() && st.running));
-        graph->set (hist, targetLufsFor (c.volume()) + s.targetOffsetDb, c.leveler() && c.enabled(), kcCur);
+        graph->set (hist, c.shownTargetLufs (st.kind), c.leveler() && c.enabled(), kcCur);
     }
 
     deviceGuids.clear();
@@ -1051,6 +1107,7 @@ void MainComponent::syncFromController()
 int MainComponent::preferredHeight() const
 {
     // The window has one height: the equalizer opens as a sheet over the cards instead of growing it.
+    if (theater) return kTop + kHead + kGap + (banner() != Banner::None ? kBannerH + kGap : 0) + kTheaterViz + kGap + kTheaterBar + kBottom;
     return kTop + kHead + kGap + (banner() != Banner::None ? kBannerH + kGap : 0) + kRow1 + kGap + kRow2 + kGap + kEqClosed + kBottom;
 }
 
@@ -1112,6 +1169,7 @@ void MainComponent::soundChanged()
 
 void MainComponent::timerCallback()
 {
+    StallProbe whole ("MainComponent::timerCallback");
     if (! isShowing()) return;
     const auto& st = c.now();
     bool needPaint = false;
@@ -1127,6 +1185,7 @@ void MainComponent::timerCallback()
         toneSwitch->onColour = kcCur;
         needPaint = true;
     }
+    if (auto* peer = getPeer()) ScreenPalette::get().setMainWindow ((HWND) peer->getNativeHandle());
     if (! demoData) spectrum->set (st.bands, st.bandPeaks, kcCur, c.enabled() && st.running);
     if (viz->isShowing() || vizWindow != nullptr)
     {
@@ -1135,9 +1194,14 @@ void MainComponent::timerCallback()
         if (demoData) { Visualizer::fakeBands (juce::Time::getMillisecondCounterHiRes() / 1000.0, bands); on = true; }
         viz->feed (bands, st.kind, on);
         if (vizWindow != nullptr) vizWindow->visual().feed (bands, st.kind, on);
+        if (! demoData)    // where in the song we are, for the words of the "Song" picture
+        {
+            viz->setTrack (st.artist, st.title, st.album, st.hasTimeline, st.posSec, st.durSec, st.posStampMs, st.mediaPlaying);
+            if (vizWindow != nullptr) vizWindow->visual().setTrack (st.artist, st.title, st.album, st.hasTimeline, st.posSec, st.durSec, st.posStampMs, st.mediaPlaying);
+        }
     }
     if (! demoData && ++graphTick % 6 == 0)
-        graph->set (st.history, targetLufsFor (c.volume()) + c.sound (st.kind).targetOffsetDb, c.leveler() && c.enabled(), kcCur);
+        graph->set (st.history, c.shownTargetLufs (st.kind), c.leveler() && c.enabled(), kcCur);
     if (st.kind != shownKind) syncFromController();
     static juce::String lastNow;
     const juce::String nowKey = st.title + st.artist + whyText() + toneText() + (st.running ? "1" : "0");
@@ -1193,6 +1257,7 @@ void MainComponent::paint (juce::Graphics& g)
     {
         const float scale = std::round (g.getInternalContext().getPhysicalPixelScaleFactor() * 20.0f) / 20.0f;
         std::vector<juce::Rectangle<int>> panes { nowR, loudR, soundR };
+        if (theater) panes = { barR };
         if (banner() != Banner::None) panes.push_back (bannerR);
         if (! glass.matches (getWidth(), getHeight(), scale, panes))
         {
@@ -1247,6 +1312,33 @@ void MainComponent::paint (juce::Graphics& g)
         g.drawFittedText (text, bannerR.reduced (40, 8).withTrimmedRight (150), juce::Justification::centredLeft, 2);
     }
 
+    if (theater)
+    {
+        // the bar: speaker, volume percentage, even-loudness icon
+        const auto vb = volume.getBounds();
+        const float ix = (float) vb.getX() - 26.0f, iy = (float) vb.getCentreY();
+        juce::Path sp;
+        sp.startNewSubPath (ix - 7, iy - 4); sp.lineTo (ix - 2, iy - 4); sp.lineTo (ix + 4, iy - 9);
+        sp.lineTo (ix + 4, iy + 9); sp.lineTo (ix - 2, iy + 4); sp.lineTo (ix - 7, iy + 4); sp.closeSubPath();
+        g.setColour (col::dim);
+        g.fillPath (sp);
+        juce::Path wave;
+        wave.addCentredArc (ix + 4, iy, 7, 7, 0, 0.9f, 2.2f, true);
+        g.strokePath (wave, juce::PathStrokeType (1.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.setColour (col::text);
+        g.setFont (font (15.0f, 600));
+        g.drawText (juce::String (juce::roundToInt (c.volume() * 100)) + "%", juce::Rectangle<int> (vb.getRight() + 4, vb.getY(), 52, vb.getHeight()), juce::Justification::centredRight);
+        // three bars of different height next to the even-loudness switch
+        const float lx = (float) levelSwitch->getX() + (float) Switch::kGlow - 34.0f, ly = (float) levelSwitch->getBounds().getCentreY();
+        const bool on = c.leveler() && c.enabled();
+        for (int i = 0; i < 3; ++i)
+        {
+            const float hgt = (i == 1 ? 18.0f : 11.0f);
+            g.setColour (on ? kc : col::dim);
+            g.fillRoundedRectangle (lx + (float) i * 7.0f, ly - hgt / 2, 4.0f, hgt, 2.0f);
+        }
+        return;
+    }
     // now playing
     drawCard (g, nowR.toFloat());
     // The icon and the text block are both centred vertically in the card; the artist line takes room only when there is one.
@@ -1371,6 +1463,8 @@ void MainComponent::resized()
         moreButton.setBounds (hr.removeFromRight (84).withSizeKeepingCentre (84 - 3, 44 - 3).expanded (NeoButton::kGlow));
         hr.removeFromRight (10);
         deviceBox->setBounds (hr.removeFromRight (340).withSizeKeepingCentre (340, 44));
+        hr.removeFromRight (10);
+        theaterBtn->setBounds (hr.removeFromRight (48).withSizeKeepingCentre (44, 44));
     }
     r.removeFromTop (kGap);
     bannerR = {};
@@ -1379,6 +1473,25 @@ void MainComponent::resized()
         bannerR = r.removeFromTop (kBannerH);
         bannerButton.setBounds (juce::Rectangle<int> (bannerR.getRight() - 150, bannerR.getCentreY() - 21, 134, 42).reduced (2).expanded (NeoButton::kGlow));
         r.removeFromTop (kGap);
+    }
+    if (theater)
+    {
+        // compact: one big picture (21:9) and a thin bar of icons; nothing else
+        nowR = loudR = soundR = eqR = modesR = {};
+        vizR = r.removeFromTop (kTheaterViz);
+        viz->setBounds (vizR);
+        r.removeFromTop (kGap);
+        barR = r.removeFromTop (kTheaterBar);
+        auto b = barR.reduced (16, 0);
+        const auto modesBox = b.removeFromLeft (360).withSizeKeepingCentre (360, 54);
+        modes->setBounds (modesBox.expanded (ModeBar::kGlow));
+        b.removeFromLeft (28);
+        levelSwitch->setBounds (juce::Rectangle<int> (b.getRight() - 56, barR.getCentreY() - 17, 56, 34).expanded (Switch::kGlow - 4));
+        b.removeFromRight (56 + 44 + 24);
+        b.removeFromLeft (44);   // the speaker icon is drawn here
+        b.removeFromRight (56);  // the percentage is drawn here
+        volume.setBounds (b.withSizeKeepingCentre (b.getWidth(), 36));
+        return;
     }
     auto row1 = r.removeFromTop (kRow1);
     nowR = row1.removeFromLeft (560);
@@ -1451,6 +1564,7 @@ void MainComponent::showMoreMenu()
     m.addItem (1, keepText, true, c.keepAwake());
     m.addItem (501, L ("Если после паузы теряются слова; может слегка шипеть", "For cut-off words after a pause; may hiss slightly"), false);
     m.addItem (2, L ("Громкость как в FxSound (без выравнивания)", "FxSound-style loudness (no leveling)"), true, c.fxSoundLoudness());
+    m.addItem (5, L ("Всегда держать этот выход основным в Windows", "Always keep this output as the Windows default"), true, c.keepsDefault());
     m.addSeparator();
     juce::PopupMenu scale;
     scale.setLookAndFeel (&lnf);
@@ -1471,6 +1585,7 @@ void MainComponent::showMoreMenu()
         else if (r == 2) c.setFxSoundLoudness (! c.fxSoundLoudness());
         else if (r == 3) c.forgetLearned();
         else if (r == 4) { juce::String err; c.installOnDevice (false, err); }
+        else if (r == 5) c.setPinDefault (! c.keepsDefault());
         else if (r == 20 && onScale) onScale (0);
         else if (r >= 50 && r <= 200 && onScale) onScale (r);
         else if (r == 299) { useAutomaticLanguage(); refreshTexts(); }
@@ -1482,11 +1597,32 @@ void MainComponent::showMoreMenu()
 // Spectrum or visual in the loudness card, as the user left it.
 void MainComponent::applyView (bool instant)
 {
-    const bool visual = VizPrefs::get().visual;
+    const bool visual = theater || VizPrefs::get().visual;
     spectrum->setVisible (! visual);
-    viz->setVisible (visual);
+    viz->setVisible (visual && vizWindow == nullptr);   // (while the visual is on the whole screen the small one rests: two GPU pictures at once made both stutter)
     viewToggle->set (visual, kcCur, instant);
+    viewToggle->setVisible (! theater);
+    for (juce::Component* comp : std::initializer_list<juce::Component*> { graph.get(), &fid, &bass, &surr, &amb, &resetSound, toneSwitch.get(), eqPanel.get() })
+        comp->setVisible (! theater);
+    modes->compact = theater;
+    modes->repaint();
     if (visual) { viz->setStyleNow (VizPrefs::get().style); viz->setAuto (VizPrefs::get().autoCycle); }
+}
+
+// The compact layout and back: the window takes the new height by itself (it follows the content).
+void MainComponent::applyTheater (bool on)
+{
+    if (theater == on) return;
+    if (on && eqOpen) setEqOpen (false);
+    theater = on;
+    theaterBtn->on = on;
+    theaterBtn->repaint();
+    VizPrefs::get().theater = on;
+    VizPrefs::get().save();
+    applyView (true);
+    setSize (kWidth, preferredHeight());
+    resized();
+    repaint();
 }
 
 void MainComponent::openVisual()
@@ -1501,6 +1637,13 @@ void MainComponent::openVisual()
     });
     vizWindow->visual().setStyleNow (VizPrefs::get().style);
     vizWindow->visual().setAuto (VizPrefs::get().autoCycle);
+    vizWindow->visual().pull = viz->pull;
+    vizWindow->visual().onFollow = [this] (bool on)
+    {
+        VizPrefs::get().followVideo = on;
+        VizPrefs::get().save();
+        viz->setFollow (on);
+    };
     vizWindow->visual().onChoice = [this] (VizStyle st, bool autoOn)
     {
         VizPrefs::get().style = st;
@@ -1509,9 +1652,10 @@ void MainComponent::openVisual()
         viz->setStyleNow (st);
         viz->setAuto (autoOn);
     };
+    applyView (true);
 }
 
-void MainComponent::closeVisual() { vizWindow.reset(); }
+void MainComponent::closeVisual() { vizWindow.reset(); applyView (true); }
 
 // Texts that are set once on a component (the rest is drawn from L() on every paint).
 void MainComponent::refreshTexts()

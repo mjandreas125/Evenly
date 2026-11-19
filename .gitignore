@@ -11,3 +11,10 @@ dist/
 # local work notes
 WORKLOG.md
 __pycache__/
+
+# local scratch, notes and clip frames
+scratch/
+NIGHT_TASKS.md
+HANDOFF_VISUALS.md
+docs/diwk/
+docs/DIWK_*.md

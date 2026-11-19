@@ -1,6 +1,7 @@
 // Rovno: the app. One instance, lives in the tray; closing the window keeps the sound processing.
 //   Rovno.exe            open the window
 //   Rovno.exe --tray     start hidden in the tray (autostart)
+//   Rovno.exe --quit     close the running app (instead of killing it, which leaves a dead tray icon)
 //   Rovno.exe --snapshot out.png [--eq] [--scale 1.3]   render the window to a PNG and quit (for checking the look)
 #include "MainComponent.h"
 #include "Visualizer.h"
@@ -190,6 +191,7 @@ public:
 
     void initialise (const juce::String& commandLine) override
     {
+        if (commandLine.contains ("--quit")) { quit(); return; }   // nothing was running: nothing to close
         controller = std::make_unique<rv::Controller>();
         juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);   // the tray menu gets the same look
         const auto args = juce::StringArray::fromTokens (commandLine, true);
@@ -210,6 +212,12 @@ public:
                 rv::ui::Visualizer v (w > 900);
                 v.setBounds (0, 0, w, h);
                 v.setStyleNow ((rv::ui::VizStyle) st);
+                if (args.contains ("--viz-lyrics"))     // --viz-lyrics "Artist|Title|seconds": the words of that song, at that second
+                {
+                    const auto parts = juce::StringArray::fromTokens (opt ("--viz-lyrics", ""), "|", "");
+                    if (parts.size() >= 3)
+                        v.setSongForTest (rv::ui::Lyrics::fetch (parts[0], parts[1], {}, 0.0), parts[0], parts[1], parts[2].getDoubleValue());
+                }
                 std::array<float, (size_t) rv::kBands> bands {};
                 for (float tt = 0; tt < seconds; tt += 1.0f / 60.0f)
                 {
@@ -275,7 +283,9 @@ public:
         controller.reset();
     }
 
-    void anotherInstanceStarted (const juce::String&) override { showWindow(); }
+    // "Rovno.exe --quit" closes the running app properly (its tray icon goes with it), e.g. before an update;
+    // killing the process leaves a dead icon in the tray until the mouse passes over it.
+    void anotherInstanceStarted (const juce::String& args) override { if (args.contains ("--quit")) quit(); else showWindow(); }
     void systemRequestedQuit() override { quit(); }
 
 private:

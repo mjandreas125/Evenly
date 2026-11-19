@@ -99,6 +99,7 @@ class Spectrum;
 class Visualizer;
 class ViewToggle;
 class VisualWindow;
+class TheaterButton;
 class LevelGraph;
 class EqEditor;
 class DeviceBox;
@@ -140,6 +141,7 @@ private:
     } ticker { this };
     void bannerAction();
     void applyView (bool instant = false);   // spectrum or visual in the loudness card
+    void applyTheater (bool on);              // the compact layout: a big picture and a bar of icons
     void openVisual();       // the visual on the whole screen
     void closeVisual();
     juce::String toneText() const;
@@ -171,6 +173,8 @@ private:
     GlassBackdrop glass;
     bool glassDirty = true;
     int graphTick = 0;
-    juce::Rectangle<int> headerR, bannerR, nowR, modesR, loudR, soundR, eqR, footR, eqHeadR;
+    juce::Rectangle<int> headerR, bannerR, nowR, modesR, loudR, soundR, eqR, footR, eqHeadR, vizR, barR;
+    std::unique_ptr<TheaterButton> theaterBtn;
+    bool theater = false;
 };
 } // namespace rv::ui

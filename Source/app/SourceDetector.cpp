@@ -144,6 +144,18 @@ struct SourceDetector::Impl
             np.album = props.AlbumTitle().c_str();
             if (const auto t = props.PlaybackType()) np.playbackType = (int) t.Value();
             np.playing = chosen.GetPlaybackInfo().PlaybackStatus() == wmc::GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing;
+            try
+            {
+                const auto tl = chosen.GetTimelineProperties();
+                const double endS = std::chrono::duration<double> (tl.EndTime() - tl.StartTime()).count();
+                double pos = std::chrono::duration<double> (tl.Position()).count();
+                if (np.playing)
+                    pos += std::chrono::duration<double> (winrt::clock::now() - tl.LastUpdatedTime()).count();   // the player only updates this now and then
+                np.hasTimeline = endS > 1.0;
+                np.durationSec = endS;
+                np.positionSec = pos < 0 ? 0 : (pos > endS ? endS : pos);
+            }
+            catch (...) { np.hasTimeline = false; }
         }
         catch (...)
         {

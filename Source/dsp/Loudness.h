@@ -124,12 +124,14 @@ public:
     void reset()
     {
         for (auto& k : kw) k.reset();
-        pSlow = pFast = 0; haveEstimate = false; silence = 0; quietRun = 0; activeTime = 0; settle = 0;
+        pSlow = pFast = 0; midDb = -70; haveEstimate = false; silence = 0; quietRun = 0; activeTime = 0; settle = 0;
         gainDb = 0; appliedGain = 1;
     }
     void idle (double seconds) { silence += seconds; }   // time passed without being measured
     double gainDb_() const { return gainDb; }
     double slowLufs() const { return haveEstimate ? powerToLufs (pSlow) : -70; }
+    double quietRun_() const { return quietRun; }
+    double midLufs_() const { return midDb; }
 
     // Measures the block, updates the gain and applies it (ramped) to all `channels`.
     void process (float* x, int n, int channels, int stride, const LevelerSettings& s)
@@ -154,8 +156,14 @@ public:
         const bool audible = lk > -60;
         const double slowLk = haveEstimate ? powerToLufs (pSlow) : 0;
         const bool belowLevel = haveEstimate && lk <= slowLk - 12;
-        const bool deepBelow = haveEstimate && lk <= slowLk - 18;
-        quietRun = audible && belowLevel ? quietRun + (deepBelow ? dur : dur / 3) : 0;
+        // Is this quieter content (a quiet verse, a quiet next song) rather than a pause? Judged on the last second as a whole
+        // (19.11.2026): judged block by block, every drum hit of a quiet verse rose above the line and started the count again,
+        // so a quiet verse after a loud chorus stayed "a pause" for good and was never brought up.
+        // (averaged in dB, as it is heard: a power average stays up near the loud part for seconds; true silence, 25 dB down, is
+        // a pause and does not count)
+        if (audible && (! haveEstimate || lk > slowLk - 25)) midDb += (1 - std::exp (-dur / 0.7)) * (lk - midDb);
+        const bool midBelow = haveEstimate && audible && midDb <= slowLk - 6;
+        quietRun = midBelow ? quietRun + dur : (audible ? 0 : quietRun);
         const bool newQuieter = quietRun > s.quietToNewSec;
         const bool active = audible && (! belowLevel || newQuieter);
         if (active)
@@ -168,7 +176,7 @@ public:
             if (resumed || fresh)
             {
                 settle = settleSec; settleZ = 0; settleT = 0; settleFresh = fresh;
-                if (fresh) { activeTime = 0; quietRun = 0; }
+                if (fresh) { activeTime = 0; quietRun = 0; midDb = lk; }
             }
             if (settle > 0)
             {
@@ -196,7 +204,7 @@ public:
             if (desired > guard) desired = std::max (guard, -s.maxCutDb);
             double rate;
             if (desired < gainDb) rate = jump || (settleFresh && activeTime < 1.5) ? 40.0 : 6.0;   // new, louder content comes down at once
-            else rate = active && settle <= 0 ? (activeTime < 2.0 ? 10.0 : s.riseDbPerSec) : 0.0;   // no rising while the estimate settles
+            else rate = active && settle <= 0 ? (activeTime < 2.0 ? 20.0 : s.riseDbPerSec) : 0.0;   // no rising while the estimate settles; new content comes up at once (20 dB/s)
             const double step = rate * dur;
             gainDb = desired < gainDb ? std::max (desired, gainDb - step) : std::min (desired, gainDb + step);
         }
@@ -215,7 +223,7 @@ public:
 private:
     double fs = 48000;
     KWeight kw[2];
-    double pSlow = 0, pFast = 0, silence = 0, quietRun = 0, activeTime = 0, gainDb = 0, appliedGain = 1;
+    double pSlow = 0, pFast = 0, midDb = -70, silence = 0, quietRun = 0, activeTime = 0, gainDb = 0, appliedGain = 1;
     double settle = 0, settleZ = 0, settleT = 0;
     static constexpr double settleSec = 0.5;   // after a pause: measure first, move the gain only down
     bool haveEstimate = false, settleFresh = false;

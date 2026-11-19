@@ -11,11 +11,13 @@ namespace rv
 class Analyzer
 {
 public:
-    void prepare (double sampleRate)
+    // fftSize / hopSize 0 = the slow default; withLoudness false skips the K-weighting (the fast one does not need it)
+    void prepare (double sampleRate, int fftSize = 0, int hopSize = 0, bool withLoudness = true)
     {
         fs = sampleRate;
-        n = fs > 60000 ? 8192 : 4096;
-        hop = n / 2;
+        loudness = withLoudness;
+        n = fftSize > 0 ? fftSize : (fs > 60000 ? 8192 : 4096);
+        hop = hopSize > 0 ? hopSize : n / 2;
         win.resize ((size_t) n);
         for (int i = 0; i < n; ++i) win[(size_t) i] = 0.5f - 0.5f * (float) std::cos (2 * 3.141592653589793 * i / n);
         buf.assign ((size_t) n, 0.0f);
@@ -42,9 +44,12 @@ public:
         {
             const float* s = x + (size_t) i * (size_t) stride;
             const float l = s[0], r = channels > 1 ? s[1] : s[0];
-            const double kl = kw[0].process (l), kr = kw[1].process (r);
-            kAcc += kl * kl + kr * kr;
-            ++kCount;
+            if (loudness)
+            {
+                const double kl = kw[0].process (l), kr = kw[1].process (r);
+                kAcc += kl * kl + kr * kr;
+                ++kCount;
+            }
             peak = std::max (peak, std::max (std::abs (l), std::abs (r)));
             buf[(size_t) fill++] = 0.5f * (l + r);
             if (fill == n)
@@ -99,6 +104,7 @@ private:
     }
 
     double fs = 48000;
+    bool loudness = true;
     int n = 4096, hop = 2048, fill = 0;
     std::vector<float> win, buf;
     std::vector<std::complex<float>> fft, tw;

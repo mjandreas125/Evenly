@@ -4,6 +4,7 @@
 // settings on disk so the effect starts with them after a reboot (before the app runs).
 #include "../dsp/Shared.h"
 #include <windows.h>
+#include <array>
 #include <string>
 #include <vector>
 
@@ -33,7 +34,7 @@ public:
         lastTry = now;
         mapping = OpenFileMappingW (FILE_MAP_ALL_ACCESS, FALSE, (L"Global\\Rovno." + endpoint).c_str());
         if (! mapping) return false;
-        block = static_cast<SharedBlock*> (MapViewOfFile (mapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof (SharedBlock)));
+        block = static_cast<SharedBlock*> (MapViewOfFile (mapping, FILE_MAP_ALL_ACCESS, 0, 0, 0));
         if (! block || block->magic != kSharedMagic || block->version != kSharedVersion) { close(); return false; }
         lastFrame = block->telemetry.framesWritten;
         return true;
@@ -74,6 +75,26 @@ public:
     }
 
     const Telemetry* telemetry() { return connected() ? &block->telemetry : nullptr; }
+
+    // The newest fast spectrum (short window, every ~5 ms), for the picture. False when the running
+    // effect is an older one without it, or nothing is playing.
+    bool fastBands (std::array<float, kBands>& out)
+    {
+        if (! connected() || block->telemetry.reserved[0] != kFastFlag) return false;
+        const FastFrame& f = block->telemetry.fast;
+        for (int tries = 0; tries < 3; ++tries)
+        {
+            const uint32_t s1 = f.seq;
+            if (s1 == 0) continue;
+            std::array<float, kBands> tmp;
+            std::memcpy (tmp.data(), f.bandsDb, sizeof (f.bandsDb));
+            std::atomic_thread_fence (std::memory_order_acquire);
+            if (f.seq != s1) continue;
+            out = tmp;
+            return true;
+        }
+        return false;
+    }
 
     // Analysis frames written since the last call (oldest first).
     void newFrames (std::vector<AnalysisFrame>& out)

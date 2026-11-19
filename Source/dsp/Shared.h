@@ -43,6 +43,16 @@ struct AnalysisFrame
     float bandsDb[kBands];       // input spectrum (before any processing), power per third octave
 };
 
+// The spectrum for the picture: a short window (about 40 ms) and a new frame every 5 ms, so what is on screen
+// follows what is heard. The slow frames above stay for the tone analysis.
+struct FastFrame
+{
+    uint32_t seq;                // 0 while being written
+    float peak;
+    float bandsDb[kBands];
+};
+constexpr uint32_t kFastFlag = 2;   // Telemetry::reserved[0] when the effect writes fast frames
+
 struct Telemetry
 {
     uint32_t heartbeat;          // incremented on every processed buffer
@@ -54,6 +64,7 @@ struct Telemetry
     uint32_t framesWritten;
     AnalysisFrame frames[kFrameRing];
     uint32_t reserved[16];
+    FastFrame fast;              // appended at the end: an older effect (smaller block) simply lacks it
 };
 
 struct SharedBlock

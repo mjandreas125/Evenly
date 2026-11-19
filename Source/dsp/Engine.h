@@ -25,9 +25,13 @@ public:
         maxi.prepare ((float) fs);
         aural.reset(); bass.reset();
         leveler.prepare (fs);
+        for (auto& k : kwPre) k.prepare (fs);
+        for (auto& k : kwPost) k.prepare (fs);
+        boostPre = boostPost = boostTrimDb = 0;
         limiter.prepare (fs, nch);
         inMeter.prepare (fs); outMeter.prepare (fs);
         analyzer.prepare (fs);
+        fastAnalyzer.prepare (fs, fs > 60000 ? 4096 : 2048, fs > 60000 ? 480 : 240, false);
         scratch.assign ((size_t) (std::max (16, (int) (fs * 0.01)) + 1) * (size_t) nch, 0.0f);
         for (auto& g : eqNow) g = 0;
         eqFlat();
@@ -64,6 +68,19 @@ public:
                 slot.seq = tel->framesWritten + 1;
                 tel->framesWritten++;
             });
+        if (tel != nullptr)
+        {
+            tel->reserved[0] = kFastFlag;
+            fastAnalyzer.process (x, frames, nch, nch, [&] (const AnalysisFrame& f)
+            {
+                tel->fast.seq = 0;
+                std::atomic_thread_fence (std::memory_order_release);
+                tel->fast.peak = f.peak;
+                std::memcpy (tel->fast.bandsDb, f.bandsDb, sizeof (tel->fast.bandsDb));
+                std::atomic_thread_fence (std::memory_order_release);
+                tel->fast.seq = ++fastCount;
+            });
+        }
         inMeter.process (x, frames, nch, nch);
 
         if (params.enabled)
@@ -96,11 +113,23 @@ public:
                         if (nch >= 2) maxi.process (p, n, nch, fxp);
                         break;
                     case LoudnessMode::Leveler:
-                        leveler.process (p, n, nch, nch, levelerSettings);
-                        // Optional FxSound Dynamic Boost after the leveler: the leveler gives it the same input level
-                        // every time, the boost raises speech to FxSound's loudness (a plain peak limiter cannot,
-                        // speech has too much headroom between its loudness and its peaks).
-                        if (params.boost > 0 && nch >= 2) maxi.process (p, n, nch, fxp);
+                        // Optional FxSound Dynamic Boost after the leveler: the boost raises speech to FxSound's loudness
+                        // (a plain peak limiter cannot, speech has too much headroom between its loudness and its peaks).
+                        if (params.boost > 0 && nch >= 2)
+                        {
+                            // 19.11.2026: the boost adds a different amount to every song (measured +7 dB on MGMT "Little
+                            // Dark Age", +3.5 dB on A$AP Rocky "Praise the Lord" once its bass comes in), so with the leveler
+                            // holding its own output level the songs came out 3-4 dB apart and a song dropped when its beat
+                            // started. The leveler now aims at the level that comes OUT of the boost: its target is moved
+                            // by what the boost has been adding (expected 6 dB, see Controller::applyParams).
+                            LevelerSettings s = levelerSettings;
+                            s.targetLufs += boostTrimDb;
+                            leveler.process (p, n, nch, nch, s);
+                            const double pre = kPower (kwPre, p, n);
+                            maxi.process (p, n, nch, fxp);
+                            trackBoost (pre, kPower (kwPost, p, n), n / fs);
+                        }
+                        else leveler.process (p, n, nch, nch, levelerSettings);
                         limiter.process (p, n, nch, ceiling);
                         break;
                     default:
@@ -168,6 +197,30 @@ private:
     }
     void eqFlat() { for (auto& g : eqSet) g = 0; eq.setup ((float) fs, eqSet); eq.reset(); }
 
+    // Mean K-weighted power of a block (first two channels).
+    double kPower (KWeight* kw, const float* x, int n)
+    {
+        double z = 0;
+        for (int i = 0; i < n; ++i)
+            for (int c = 0; c < std::min (nch, 2); ++c)
+            {
+                const double y = kw[c].process (x[(size_t) i * (size_t) nch + (size_t) c]);
+                z += y * y;
+            }
+        return z / std::max (1, n);
+    }
+    // How much the boost adds, averaged over the last ~1.5 s of sound (pauses do not count), and the leveler target
+    // shift that makes the output land 6 dB over the leveler's own target whatever the boost does to this music.
+    void trackBoost (double pre, double post, double dur)
+    {
+        if (powerToLufs (pre) < -50) return;
+        const double a = 1 - std::exp (-dur / 1.5);
+        boostPre += a * (pre - boostPre);
+        boostPost += a * (post - boostPost);
+        const double addsDb = 10 * std::log10 ((boostPost + 1e-20) / (boostPre + 1e-20));
+        boostTrimDb = std::clamp (6.0 - addsDb, -6.0, 6.0);
+    }
+
     double fs = 48000;
     int nch = 2;
     EngineParams params {};
@@ -181,9 +234,12 @@ private:
     fx::Maximizer maxi;
     Leveler leveler;
     LevelerSettings levelerSettings;
+    KWeight kwPre[2], kwPost[2];
+    double boostPre = 0, boostPost = 0, boostTrimDb = 0;
     Limiter limiter;
     LoudnessMeter inMeter, outMeter;
-    Analyzer analyzer;
+    Analyzer analyzer, fastAnalyzer;
+    uint32_t fastCount = 0;
     std::vector<float> scratch;
     float eqTarget[10] {}, eqNow[10] {}, eqSet[10] {};
     float ceiling = 0.891f, outGain = 1.0f;

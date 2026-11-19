@@ -1,7 +1,7 @@
-; Inno Setup script for Evenly (internal file names keep the project's old name, Rovno).
+﻿; Inno Setup script for Evenly (internal file names keep the project's old name, Rovno).
 ; Build: ISCC.exe /DBuildDir=C:\dev\build\Rovno Rovno.iss
 #define AppName "Evenly"
-#define AppVersion "0.10.0"
+#define AppVersion "0.12.1"
 #ifndef BuildDir
   #define BuildDir "..\build"
 #endif

@@ -1,0 +1,109 @@
+    // ---- "Voice": the Vortex that listens like a person ---------------------------------------------------------------------------
+    // Mirrored in all four quarters (so it fits a wide screen and has no "side"). The voice lives on a ring in the middle whose radius is
+    // its pitch (low sound = small ring, high sound = wide ring). Everything the voice does SHARPLY makes something new, at once:
+    //  * every abrupt sound (a syllable, a t, a k, an s, a hit) sets off a burst on the ring: spokes whose number and turn change with
+    //    every sound, a ring that opens out, a flash; a hissy sound (s, sh, t) throws fine grains instead, a round one (b, m, a vowel)
+    //    a hard shock ring. What it leaves is then carried outwards by the trail, so the sound has consequences;
+    //  * a held note keeps its ring burning and slows the swirl; vibrato makes ripples; a voice that climbs turns the swirl one way and
+    //    sends it outwards, one that falls turns it the other way and draws it in; a phrase that is climbing sends rings that close in
+    //    on the voice (expectation), one that is coming down opens rings out (release); the end of a phrase is a wave;
+    //  * how hard it is sung sets the brightness and the colour of everything (tender and cold .. strained and hot).
+    static juce::String voiceWarpSource()
+    {
+        return R"GLSL(#version 330 core
+uniform vec2 uRes;
+uniform float uTime, uPhase, uBass, uBeat, uLevel, uIdle, uDecay, uStep;
+uniform vec3 uA, uB, uC;
+uniform sampler2D uPrev;
+uniform float uVoiced, uReg, uSlope, uHold, uVib, uBuild, uInt, uBright, uTens, uEnd;
+uniform float uOnset, uOnHi, uSeed;
+out vec4 o;
+mat2 rot(float a) { float c = cos(a), s = sin(a); return mat2(c, -s, s, c); }
+vec3 pitchCol(float r, float t)
+{
+    vec3 c = r < 0.5 ? mix(uA, uB, r * 2.0) : mix(uB, uC, (r - 0.5) * 2.0);
+    return mix(c, vec3(1.0), 0.12 + 0.30 * t);
+}
+float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+void main()
+{
+    vec2 p = (gl_FragCoord.xy - 0.5 * uRes) / uRes.y;
+    p = abs(p);                                                   // the same in all four quarters
+    float r = length(p);
+    float ang = atan(p.y, p.x);
+    float calm = 1.0 - 0.6 * uHold;
+    float sl = clamp(uSlope / 5.0, -1.0, 1.0);
+
+    // where this pixel came from: turned (the direction follows climbing / falling), carried outwards, pushed out hard by every sharp sound
+    float turn = uStep * calm * (0.010 * sl + 0.002 * sin(uPhase * 0.2));
+    float zoom = 1.0 - uStep * (0.010 + (0.010 * uInt + 0.014 * sl) * calm + 0.008 * uOnset);
+    vec2 q = rot(turn) * (p * zoom);
+    q += uStep * uVib * 0.0045 * sin(r * 55.0 - uTime * 12.0) * p / max(r, 1e-3);          // vibrato: ripples
+    vec3 prev = texture(uPrev, vec2(q.x * uRes.y / uRes.x, q.y) + 0.5).rgb;
+
+    float h = uStep * (0.020 + 0.060 * uTens);
+    float c = cos(h), s = sin(h);
+    vec3 k = vec3(0.57735);
+    prev = prev * c + cross(k, prev) * s + k * dot(k, prev) * (1.0 - c);
+    float dec = mix(pow(0.958, uStep), pow(0.978, uStep), uHold);       // short trails: otherwise everything piles up into white
+    prev = max(prev * dec - 0.0030 * uStep, 0.0);
+
+    vec3 add = vec3(0.0);
+    float R = 0.07 + 0.30 * uReg;                                         // the voice ring: its radius is the pitch
+    vec3 col = mix(pitchCol(uReg, uInt), vec3(1.0), 0.45 * uBright);
+    add += col * exp(-abs(r - R) * 90.0) * (uVoiced * (0.25 + 0.60 * uInt) + uHold * 0.55 + 0.05 + 0.25 * uLevel * (1.0 - uVoiced));
+
+    // a sharp sound: a burst that is different every time
+    float n = 2.0 + floor(uReg * 4.0 + uSeed * 3.0);                      // spokes per quarter
+    float spokes = pow(abs(cos(ang * n * 2.0 + uSeed * 6.2831)), 14.0);
+    float ringB = exp(-abs(r - R) * (26.0 + 70.0 * uOnHi));
+    vec3 burst = col * (ringB * 1.4 + spokes * exp(-abs(r - R * 1.35) * 9.0) * 1.1 + exp(-r * 14.0) * 0.8);
+    float grain = step(0.90, hash(floor(p * 70.0) + uSeed * 13.0));        // a hissy sound: fine grains around the ring
+    burst += mix(col, vec3(1.0), 0.5) * grain * exp(-abs(r - R * (1.0 + 0.6 * uOnHi)) * 6.0) * uOnHi * 1.3;
+    burst += mix(uC, vec3(1.0), 0.3) * exp(-abs(r - R * (1.0 + (1.0 - uOnset) * 1.6)) * 22.0) * (1.0 - uOnHi) * uOnset * 0.9;   // a round one: a shock ring
+    add += burst * uOnset * 1.0;
+
+    // expectation / release / the end of a phrase
+    float ph = fract(uTime * 0.55);
+    add += pitchCol(min(1.0, uReg + 0.25), 1.0) * exp(-abs(r - mix(0.55, R, ph)) * 55.0) * clamp(uBuild, 0.0, 1.0) * uVoiced * (1.0 - ph) * 0.55;
+    add += uA * exp(-abs(r - mix(R, 0.55, ph)) * 55.0) * clamp(-uBuild, 0.0, 1.0) * uVoiced * (1.0 - ph) * 0.45;
+    add += mix(uC, vec3(1.0), 0.4) * exp(-abs(r - (1.0 - uEnd) * 0.95) * 16.0) * uEnd * uEnd * 0.9;
+    add += mix(uA, uC, uTens) * 0.008 * (1.0 + uLevel);
+    add += uB * exp(-r * 6.0) * (0.02 + 0.05 * uBass + 0.05 * uBeat);
+    add *= mix(1.0, 0.6, uIdle) * uStep * 0.30;
+    o = vec4(prev + add, 1.0);
+}
+)GLSL";
+    }
+
+    static juce::String voiceShowSource()
+    {
+        return R"GLSL(#version 330 core
+uniform vec2 uRes;
+uniform float uBass, uBeat, uIdle, uLevel;
+uniform sampler2D uPrev;
+out vec4 o;
+void main()
+{
+    vec2 uv = gl_FragCoord.xy / uRes;
+    vec2 c = uv - 0.5;
+    float k = 0.002 + 0.006 * uBeat + 0.003 * uBass;
+    vec3 col = vec3(texture(uPrev, uv + c * k).r, texture(uPrev, uv).g, texture(uPrev, uv - c * k).b);
+    vec3 bloom = vec3(0.0);
+    for (int i = 0; i < 8; i++)
+    {
+        float an = float(i) * 0.7853982;
+        vec2 d = vec2(cos(an), sin(an));
+        bloom += texture(uPrev, uv + d * 0.005 * vec2(uRes.y / uRes.x, 1.0)).rgb + texture(uPrev, uv + d * 0.014 * vec2(uRes.y / uRes.x, 1.0)).rgb;
+    }
+    col += bloom * (0.30 / 16.0) * (1.0 + uBeat * 0.5);
+    col *= 1.0 - 0.30 * dot(c, c) * 2.0;
+    col = 1.0 - exp(-col * 1.9);
+    float lum = dot(col, vec3(0.3, 0.59, 0.11));
+    col = max(mix(vec3(lum), col, 1.6), 0.0);
+    col = mix(col, col * col * (3.0 - 2.0 * col), 0.55);
+    o = vec4(col, 1.0);
+}
+)GLSL";
+    }
+

@@ -1,4 +1,6 @@
 #include "Controller.h"
+#include "TrackLearner.h"
+#include "Stall.h"
 #include <juce_core/juce_core.h>
 #include <windows.h>
 
@@ -60,6 +62,7 @@ struct Controller::Watcher : juce::Thread
         while (! threadShouldExit())
         {
             auto s = detector.poll (L"");
+            s.polledAtMs = juce::Time::getMillisecondCounterHiRes();   // the position of the song is as old as THIS moment, not as the moment it is read
             {
                 const juce::ScopedLock sl (lock);
                 latest = std::move (s);
@@ -137,6 +140,7 @@ void Controller::load()
         fxLoud = (bool) o->getProperty ("fxsoundLoudness");
         toneOn = o->hasProperty ("toneAuto") ? (bool) o->getProperty ("toneAuto") : true;
         keepOn = o->hasProperty ("keepAwake") ? (bool) o->getProperty ("keepAwake") : false;   // off: it makes the monitor hiss
+        pinDefault = (bool) o->getProperty ("pinDefault");
         manual = o->hasProperty ("manual") ? (Kind) (int) o->getProperty ("manual") : Kind::Unknown;
         device = o->getProperty ("device").toString();
         if (auto* modes = o->getProperty ("modes").getArray())
@@ -169,6 +173,7 @@ void Controller::save()
     o->setProperty ("fxsoundLoudness", fxLoud);
     o->setProperty ("toneAuto", toneOn);
     o->setProperty ("keepAwake", keepOn);
+    o->setProperty ("pinDefault", pinDefault);
     o->setProperty ("manual", (int) manual);
     o->setProperty ("device", device);
     if (device.isNotEmpty()) deviceModes.getDynamicObject()->setProperty (device, modesToVar());
@@ -362,6 +367,22 @@ bool Controller::installOnDevice (bool install, juce::String& error)
     return ok;
 }
 
+// With "keep as the Windows output" on, whatever moves the Windows default elsewhere (a headset, a voice changer,
+// an app's installer) is undone within 3 s, as long as the chosen output is there (not while the monitor is off).
+void Controller::keepDefault()
+{
+    if (! pinDefault || device.isEmpty()) return;
+    const std::wstring want = device.toWideCharPointer();
+    bool present = false;
+    for (const auto& d : deviceList) if (d.guid == want && d.plugged) present = true;
+    if (! present || devices::defaultGuid() == want) return;
+    log ("the Windows output moved away, making " + device + " the default again");
+    devices::setDefault (want);
+    refreshDevices();
+    sendChangeMessage();
+}
+void Controller::setPinDefault (bool on) { pinDefault = on; if (on) keepDefault(); saveSoon(); sendChangeMessage(); }
+
 bool Controller::switchDefaultToDevice()
 {
     const bool ok = devices::setDefault (device.toWideCharPointer());
@@ -373,6 +394,7 @@ bool Controller::switchDefaultToDevice()
 // ---- the loop -------------------------------------------------------------------------------
 void Controller::timerCallback()
 {
+    StallProbe whole ("Controller::timerCallback (all)");
     // Coming back from sleep: the timer has not run for a long time, the outputs have been torn
     // down and built again. Start the whole device side over instead of waiting for the next poll.
     const uint32_t nowMs = juce::Time::getMillisecondCounter();
@@ -404,6 +426,10 @@ void Controller::timerCallback()
         state.bands[(size_t) b] = juce::jmax (-96.0f, v);
         state.bandPeaks[(size_t) b] = juce::jmax (state.bandPeaks[(size_t) b] - 0.9f, state.bands[(size_t) b]);
     }
+    // learn the song that is playing (its portrait and its second-by-second map), whatever the window shows
+    StallProbe learnProbe ("TrackLearner::feed");
+    ui::TrackLearner::get().feed (state.bands, state.running, state.artist, state.title, state.hasTimeline, state.posSec, state.posStampMs,
+                                  state.mediaPlaying);
     if (const Telemetry* t = link.telemetry())
     {
         state.inLufs = t->inShortTerm;
@@ -415,8 +441,9 @@ void Controller::timerCallback()
         state.history.push_back ({ state.inLufs, state.outLufs });
         while (state.history.size() > 180) state.history.pop_front();
     }
-    if (ticks % 10 == 0) tick();
-    if (ticks % 100 == 0) refreshDevices();
+    if (ticks % 10 == 0) { StallProbe p ("Controller::tick"); tick(); }
+    if (ticks % 100 == 0) { StallProbe p ("Controller::refreshDevices"); refreshDevices(); }
+    if (ticks % 30 == 0) keepDefault();
     if (keepAlive.status() != state.keepStatus)
     {
         const char* names[] = { "off", "holding the output awake", "output unavailable, waiting", "FAILED" };
@@ -429,7 +456,7 @@ void Controller::timerCallback()
     state.keepError = keepAlive.error();
     state.keepStep = keepAlive.failedAt();
     if (saveAt != 0 && juce::Time::getMillisecondCounter() > saveAt) { saveAt = 0; save(); }
-    link.flushToDisk();
+    { StallProbe p ("link.flushToDisk"); link.flushToDisk(); }
 }
 
 void Controller::tick()
@@ -469,7 +496,24 @@ void Controller::tick()
             state.app = juce::String (exe.c_str()).upToLastOccurrenceOf (".exe", false, true);
             state.title = title.c_str();
             state.artist = artist.c_str();
+            state.album = album.c_str();
+            state.hasTimeline = snap.media.present && snap.media.hasTimeline;
+            state.mediaPlaying = snap.media.present && snap.media.playing;
+            state.posSec = snap.media.positionSec;
+            state.durSec = snap.media.durationSec;
+            state.posStampMs = snap.polledAtMs > 0 ? snap.polledAtMs : juce::Time::getMillisecondCounterHiRes();
             hintNow = rules.guess (exe, title, artist, album);
+        }
+        // a paused player makes no sound, so the block above keeps the last song as it was, "playing": the words of the "Song"
+        // picture then ran on through the pause, and the aligner took the silence for the singer. Its clock is taken as it is.
+        if (! (snap.media.present && snap.media.playing) && state.mediaPlaying)
+        {
+            state.mediaPlaying = false;
+            if (snap.media.present && snap.media.hasTimeline && juce::String (snap.media.title.c_str()) == state.title)
+            {
+                state.posSec = snap.media.positionSec;
+                state.posStampMs = snap.polledAtMs > 0 ? snap.polledAtMs : juce::Time::getMillisecondCounterHiRes();
+            }
         }
     }
 
@@ -540,7 +584,9 @@ void Controller::applyParams()
     // The leveler then only has to hand the boost the same input level every time.
     const bool boosted = ! fxLoud && deviceKind != DeviceKind::Headphones && (state.kind == Kind::Speech || state.kind == Kind::Music);
     p.boost = (fxLoud || boosted) ? 118 : 0;
-    p.targetLufs = targetLufsFor (vol) + s.targetOffsetDb - (boosted ? 6.0f : 0.0f);
+    // The leveler always works at the level tuned for this output; the volume slider is the output gain.
+    p.targetLufs = targetLufsFor (defaultVolumeFor (deviceKind)) + s.targetOffsetDb - (boosted ? 6.0f : 0.0f);
+    p.outputDb = volumeDbFor (vol);
     p.maxBoostDb = s.maxBoostDb;
     p.maxCutDb = 24;
     p.riseDbPerSec = s.riseDbPerSec;

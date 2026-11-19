@@ -21,6 +21,9 @@ struct NowState
     bool installed = false, running = false, fxSoundInChain = false;
     juce::String deviceName;
     juce::String app, title, artist;     // what is playing
+    juce::String album;
+    bool hasTimeline = false, mediaPlaying = false;   // the player says where it is in the track / whether it is playing
+    double posSec = 0, durSec = 0, posStampMs = 0;     // position at posStampMs (juce millisecond counter)
     Kind kind = Kind::Music;              // the mode in use
     Why why = Why::Default;
     juce::String whyDetail;
@@ -46,12 +49,16 @@ public:
     const NowState& now() const { return state; }
 
     bool enabled() const { return isEnabled; }
+    // Newest short-window spectrum straight from the effect (for the picture); false = not available.
+    bool fastBands (std::array<float, kBands>& out) { return link.fastBands (out); }
     void setEnabled (bool on);
     bool autoMode() const { return manual == Kind::Unknown; }
     void setAuto();
     void pick (Kind k);                       // hand-picked mode (auto off), remembered for this source
     float volume() const { return vol; }
     void setVolume (float v);
+    // Where the output loudness should sit for a mode (the leveler's level plus the volume slider), for the graph.
+    float shownTargetLufs (Kind k) const { return targetLufsFor (defaultVolumeFor (deviceKind)) + sound (k).targetOffsetDb + volumeDbFor (vol); }
     bool leveler() const { return levelerOn; }
     void setLeveler (bool on);
     bool fxSoundLoudness() const { return fxLoud; }
@@ -60,6 +67,8 @@ public:
     void setToneAuto (bool on);
     bool keepAwake() const { return keepOn; }
     void setKeepAwake (bool on);
+    bool keepsDefault() const { return pinDefault; }   // the chosen output is kept as the Windows default
+    void setPinDefault (bool on);
 
     ModeSound sound (Kind k) const;           // the mode's sound with the user's changes
     ModeTweaks tweaks (Kind k) const { return tweakFor[(size_t) index (k)]; }
@@ -87,7 +96,8 @@ private:
     void log (const juce::String& line);
 
     // settings
-    bool isEnabled = true, levelerOn = true, fxLoud = false, toneOn = true, keepOn = false;
+    bool isEnabled = true, levelerOn = true, fxLoud = false, toneOn = true, keepOn = false, pinDefault = false;
+    void keepDefault();
     float vol = 0.8f;                         // -9.2 LUFS: near what FxSound users are used to, still no heavy limiting
     Kind manual = Kind::Unknown;
     std::array<ModeTweaks, 4> tweakFor {};

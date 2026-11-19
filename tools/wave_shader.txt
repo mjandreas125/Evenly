@@ -1,0 +1,49 @@
+    // ---- "Wave": after the Arctic Monkeys video for "Do I Wanna Know?" ---------------------------------------------------------------
+    // What that video does (from its descriptions): a black screen and ONE white line that is the sound wave; it moves with the drums and the
+    // lead guitar, then with the singer's voice, and when the whole band comes in with the chorus, COLOURED waves appear for the new voices.
+    // So here: a white line = the waveform of everything that plays; a coloured line = the waveform of the voice range only, which comes in
+    // when someone sings; and in a chorus (the music suddenly fuller) more coloured lines come in, each one a copy of the voice wave pushed
+    // aside in time, in its own colour. NOT mirrored: it is the real wave, left to right. The texture has two rows: row 0 = everything,
+    // row 1 = the voice range.
+    static juce::String waveWarpSource()
+    {
+        return R"GLSL(#version 330 core
+uniform vec2 uRes;
+uniform float uTime, uPhase, uBass, uBeat, uLevel, uIdle, uDecay, uStep;
+uniform vec3 uA, uB, uC;
+uniform sampler2D uPrev, uWave;
+uniform float uAmp, uVoiceW, uChorusW;
+out vec4 o;
+float w1(float s) { return texture(uWave, vec2(clamp(s, 0.0, 1.0), 0.25)).r; }
+float w2(float s) { return texture(uWave, vec2(clamp(s, 0.0, 1.0), 0.75)).r; }
+float edge(float s) { return smoothstep(0.0, 0.03, s) * (1.0 - smoothstep(0.97, 1.0, s)); }
+void main()
+{
+    vec2 p = (gl_FragCoord.xy - 0.5 * uRes) / uRes.y;
+    float aspect = uRes.x / uRes.y;
+    // a very short trail: the line is crisp, it only leaves a faint echo of where it was
+    vec3 prev = texture(uPrev, gl_FragCoord.xy / uRes).rgb;
+    prev = max(prev * pow(0.78, uStep) - 0.006 * uStep, 0.0);
+
+    float s = clamp(p.x / (aspect * 0.96) + 0.5, 0.0, 1.0);
+    float e = edge(s);
+    float amp = uAmp;
+    // the white line: everything that plays
+    float d1 = abs(p.y - w1(s) * amp);
+    vec3 add = vec3(1.0) * (exp(-d1 * 380.0) * 1.0 + exp(-d1 * 70.0) * 0.22) * e;
+    // the coloured line: the voice range; it comes in when somebody sings
+    float d2 = abs(p.y - w2(s) * amp * 1.15);
+    add += uA * (exp(-d2 * 380.0) * 1.0 + exp(-d2 * 60.0) * 0.30) * e * uVoiceW;
+    // a chorus: more voices, each one the voice wave pushed aside in time, in its own colour
+    float d3 = abs(p.y - w2(s + 0.11) * amp * 0.95);
+    float d4 = abs(p.y - w2(s - 0.13) * amp * 1.0);
+    float d5 = abs(p.y - w1(s + 0.07) * amp * 0.8);
+    add += uB * (exp(-d3 * 330.0) + exp(-d3 * 55.0) * 0.25) * e * uChorusW;
+    add += uC * (exp(-d4 * 330.0) + exp(-d4 * 55.0) * 0.25) * e * uChorusW;
+    add += mix(uA, uC, 0.5) * (exp(-d5 * 330.0) + exp(-d5 * 55.0) * 0.25) * e * uChorusW * 0.8;
+    add *= (0.55 + 0.7 * uLevel + 0.3 * uBeat) * uStep * 0.40;
+    o = vec4(prev + add, 1.0);
+}
+)GLSL";
+    }
+
